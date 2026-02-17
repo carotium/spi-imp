@@ -5,6 +5,7 @@
 module obi_slave #(
   parameter int unsigned ADDR_WIDTH = 32,
   parameter int unsigned DATA_WIDTH = 32,
+
   parameter int unsigned TEST_WORDS = 8,
   parameter logic [31:0] BASE_ADDR = 32'h0000
 ) (
@@ -12,20 +13,30 @@ module obi_slave #(
   input logic rstn_i,
 
   // OBI interface
-  output logic obi_req_o,     // Request
-  input logic obi_gnt_i,      // Grant
-  output logic [ADDR_WIDTH-1:0] obi_addr_o,   // Address
-  output logic obi_we_o,      // Write Enable
-  output logic [DATA_WIDTH/8-1:0] obi_be_o    // Byte Enable
-  output logic [DATA_WIDTH-1:0] obi_wdata_o   // Write Data
-
-  input logic obi_rvalid_i    // Read Valid
-  input logic [DATA_WIDTH-1:0] obi_rdata_i    // Read Data
+  input   logic                     obi_req_i,    // Request
+  output  logic                     obi_gnt_o,    // Grant
+  input   logic [ADDR_WIDTH-1:0]    obi_addr_i,   // Address
+  input   logic                     obi_we_i,     // Write Enable
+  input   logic [DATA_WIDTH/8-1:0]  obi_be_i,     // Byte Enable
+  input   logic [DATA_WIDTH-1:0]    obi_wdata_i,  // Write Data
+  output  logic                     obi_rvalid_o, // Read Valid
+  output  logic [DATA_WIDTH-1:0]    obi_rdata_o   // Read Data
 );
 
-typedef enum logic [2:0] {} state //TODO
+typedef enum {
+  IDLE,
+  READ_ADDR
 
-always_ff @(posedge clk_i or negedge rstn_i) begin
+} state_t;
+
+state_t state, state_next;
+
+logic [ADDR_WIDTH/8-1:0] read_ptr, write_ptr;
+
+// This state decision
+always_ff @(posedge clk_i) begin
+  // If reset is low:
+  // rvalid shall be driven low.
   if(!rstn_i) begin
     state <= IDLE;
   end else begin
@@ -33,6 +44,33 @@ always_ff @(posedge clk_i or negedge rstn_i) begin
   end
 end
 
+// Write pointer
+always_ff @(posedge clk_i) begin
+  if(!rstn_i) begin
+    write_ptr <= '0;
+  end
+end
 
+// Read pointer
+always_ff @(posedge clk_i) begin
+  if(!rstn_i) begin
+    read_ptr <= '0;
+  end
+end
+
+// Next state assignment
+always_comb begin
+  case(state)
+    IDLE: begin
+      obi_rvalid_o <= 1'b0;
+      if(obi_req_i) begin
+        state_next <= READ_ADDR;
+      end
+    end
+    READ_ADDR: begin
+      obi_gnt_o <= 1'b1;
+    end
+  endcase
+end
 
 endmodule
