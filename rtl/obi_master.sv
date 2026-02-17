@@ -6,8 +6,7 @@ module obi_master #(
   parameter int unsigned ADDR_WIDTH = 32,
   parameter int unsigned DATA_WIDTH = 32,
   parameter int unsigned TEST_WORDS = 8,
-  parameter logic [31:0] BASE_ADDR = 32'h0000,
-  parameter logic [31:0] TEST_PATTERN = 32'hDEADBEEF
+  parameter logic [31:0] BASE_ADDR = 32'h0000
 ) (
   input logic clk_i,
   input logic rstn_i,
@@ -24,6 +23,16 @@ module obi_master #(
   input logic [DATA_WIDTH-1:0] obi_rdata_i    // Read Data
 );
 
-  
+typedef enum logic [2:0] {} state //TODO
+
+always_ff @(posedge clk_i or negedge rstn_i) begin
+  if(!rstn_i) begin
+    state <= IDLE;
+  end else begin
+    state <= state_next;
+  end
+end
+
+
 
 endmodule
