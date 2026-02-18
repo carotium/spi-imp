@@ -1,4 +1,4 @@
-from foraster.io import IORole, io_suffix_style
+from forastero.io import IORole, io_suffix_style
 from forastero.driver import DriverEvent
 from forastero import BaseBench
 
@@ -13,7 +13,7 @@ class SpiImpTB(BaseBench):
     def __init__(self, dut):
         super().__init__(dut, clk=dut.clk_i, rst=dut.rstn_i, rst_active_high=False)
         input_io = HandshakeIO(dut, "input", IORole.RESPONDER, io_style=io_suffix_style)
-        output_io = HandshakeIO(dut, "output", IORole.INITIATIOR, io_style=io_suffix_style)
+        output_io = HandshakeIO(dut, "output", IORole.INITIATOR, io_style=io_suffix_style)
         self.register("input_driver", HandshakeRequestDriver(self, input_io, self.clk, self.rst))
         self.register("output_driver", HandshakeResponderDriver(self, output_io, self.clk, self.rst, blocking=False))
         self.register("output_monitor", HandshakeRequestMonitor(self, output_io, self.clk, self.rst))
