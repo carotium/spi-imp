@@ -27,7 +27,7 @@ async def handshake_ready_seq(
         ).wait()
 
 @forastero.sequence(auto_lock=True)
-@foraster.requires("ready_drv", HandshakeResponderDriver)
+@forastero.requires("ready_drv", HandshakeResponderDriver)
 async def handshake_independent_ready_seq(
     ctx: SeqContext,
     ready_drv: SeqProxy[HandshakeResponderDriver],
