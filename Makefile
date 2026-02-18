@@ -17,5 +17,5 @@ docker-run-it:
                -v /etc/passwd:/etc/passwd:ro \
                -v /etc/shadow:/etc/shadow:ro \
 			   -v ~/.cache/:/headless/.cache:rw \
-			   -v $(CWD):/foss/designs/fifo-comp \
+			   -v $(CWD):/foss/designs/spi-imp \
 			    iic-osic-tools-minus:latest -s /bin/bash
