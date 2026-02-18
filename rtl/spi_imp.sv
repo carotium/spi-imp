@@ -31,7 +31,7 @@ module spi_imp #(
   output  logic [DATA_WIDTH-1:0]    obi_rdata_o,   // Read Data - only valid for read transactions
 
   // SPI master
-  output  logic                     spi_ss_o,
+  output  logic                     spi_ss_o = '0,
   output  logic                     spi_sclk_o,
   output  logic                     spi_mosi_o,
   input   logic                     spi_miso_i
@@ -52,6 +52,7 @@ logic [ADDR_WIDTH/8-1:0] read_ptr, write_ptr;
 reg [DATA_WIDTH-1:0] int_data [ADDR_WIDTH];
 
 logic obi_read_done = '0;
+logic spi_transfer_done = '0;
 int spi_sclk_counter = 0;
 
 // SCLK creation
@@ -60,8 +61,8 @@ always_ff @(posedge clk_i) begin
     spi_ss_o <= '1;
     spi_sclk_counter <= 0;
     spi_sclk_o <= '0;
-  end else if(obi_read_done) begin
-    if(sclk_counter == SCLK_COUNTER_MAX) begin
+  end else if(!spi_ss_o) begin
+    if(spi_sclk_counter == SCLK_COUNTER_MAX) begin
       spi_sclk_counter <= 0;
       spi_sclk_o <= '1;
     end else begin
