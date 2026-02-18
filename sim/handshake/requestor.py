@@ -19,3 +19,4 @@ class ObiChARequestDriver(BaseDriver):
         while self.io.get("gnt") == 0:
             await RisingEdge(self.clk)
         self.io.set("req", 0)
+        await RisingEdge(self.clk)
