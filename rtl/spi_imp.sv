@@ -1,5 +1,6 @@
 //
-// OBI master sends instructions for an SPI slave
+// OBI slave gets instructions from OBI master
+// It is intended to be a SPI master
 //
 
 module spi_imp #(
