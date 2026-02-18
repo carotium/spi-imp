@@ -8,7 +8,10 @@ module spi_imp #(
   parameter int unsigned DATA_WIDTH = 32,
 
   parameter int unsigned TEST_WORDS = 8,
-  parameter logic [31:0] BASE_ADDR = 32'h0000
+  parameter logic [31:0] BASE_ADDR = 32'h0000,
+
+  // Arbitrary max number for slck counter
+  parameter int unsigned SCLK_COUNTER_MAX = 4096
 ) (
   input logic clk_i,
   input logic rstn_i,
@@ -25,7 +28,14 @@ module spi_imp #(
   
   //  R channel
   output  logic                     obi_rvalid_o, // Read Valid - response transfer request
-  output  logic [DATA_WIDTH-1:0]    obi_rdata_o   // Read Data - only valid for read transactions
+  output  logic [DATA_WIDTH-1:0]    obi_rdata_o,   // Read Data - only valid for read transactions
+
+  // SPI master
+  output  logic                     spi_ss_o,
+  output  logic                     spi_sclk_o,
+  output  logic                     spi_mosi_o,
+  input   logic                     spi_miso_i
+
 );
 
 typedef enum {
@@ -40,6 +50,26 @@ state_t state, state_next;
 logic [ADDR_WIDTH/8-1:0] read_ptr, write_ptr;
 
 reg [DATA_WIDTH-1:0] int_data [ADDR_WIDTH];
+
+logic obi_read_done = '0;
+int spi_sclk_counter = 0;
+
+// SCLK creation
+always_ff @(posedge clk_i) begin
+  if(!rstn_i) begin
+    spi_ss_o <= '1;
+    spi_sclk_counter <= 0;
+    spi_sclk_o <= '0;
+  end else if(obi_read_done) begin
+    if(sclk_counter == SCLK_COUNTER_MAX) begin
+      spi_sclk_counter <= 0;
+      spi_sclk_o <= '1;
+    end else begin
+      spi_sclk_o <= '0;
+      spi_sclk_counter++;
+    end
+  end
+end
 
 // This state decision
 always_ff @(posedge clk_i) begin
