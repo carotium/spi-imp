@@ -39,6 +39,8 @@ state_t state, state_next;
 
 logic [ADDR_WIDTH/8-1:0] read_ptr, write_ptr;
 
+reg [DATA_WIDTH-1:0] int_data [ADDR_WIDTH];
+
 // This state decision
 always_ff @(posedge clk_i) begin
   // If reset is low:
@@ -51,25 +53,13 @@ always_ff @(posedge clk_i) begin
   end
 end
 
-// Write pointer
-always_ff @(posedge clk_i) begin
-  if(!rstn_i) begin
-    write_ptr <= '0;
-  end
-end
-
-// Read pointer
-always_ff @(posedge clk_i) begin
-  if(!rstn_i) begin
-    read_ptr <= '0;
-  end
-end
-
 // Next state assignment
 always_comb begin
   case(state)
     IDLE: begin
       obi_rvalid_o <= 1'b0;
+      obi_rdata_o <= '0;
+      obi_gnt_o <= '0;
       if(obi_req_i) begin
         // Manager indicated validity of address phase signals with setting req high
         // We go to address phase
@@ -97,6 +87,13 @@ always_comb begin
       // The manager indicates its readiness to accept the response phase signals by setting rready high
       // rready is not mandatory, i skip
       if(obi_rvalid_o) begin
+        if(obi_we_i) begin
+          // Write transaction
+          int_data[obi_addr_i] <= obi_wdata_i;
+        end else begin
+          // Read transaction
+          obi_rdata_o <= int_data[obi_addr_i];
+        end
         state_next <= IDLE;
       end
     end
