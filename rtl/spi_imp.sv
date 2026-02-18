@@ -84,9 +84,9 @@ always_comb begin
       // Subordinate indicates its readiness to accept the address phase signals by setting gnt high
       obi_gnt_o <= 1'b1;
       if(obi_req_i) begin
-        state_next <= RESPONSE_PHASE
+        state_next <= RESPONSE_PHASE;
       end else begin
-        state_next <= IDLE
+        state_next <= IDLE;
       end
 
     end
