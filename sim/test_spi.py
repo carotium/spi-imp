@@ -35,7 +35,7 @@ class SpiImpTB(BaseBench):
     shutdown_delay=1,
     shutdown_loops=1,
 )
-async def random_raffic(tb: SpiImpTB, log):
+async def random_traffic(tb: SpiImpTB, log):
     log.info(f"Scheduling random traffic to the SPI input.")
     tb.schedule(obi_channel_a_write_trans(obi_a_drv=tb.obi_a_drv, address=0x0001, data=123))
     tb.schedule(obi_channel_a_write_trans(obi_a_drv=tb.obi_a_drv, address=0x0008, data=456))
