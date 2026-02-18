@@ -31,8 +31,6 @@ class ObiChARequestMonitor(BaseMonitor):
                 capture(
                     ObiChATrans(
                         addr = self.io.get("addr"),
-                        wdata = self.io.get("wdata"),
-                        we = self.io.get("we"),
-                        be = self.io.get("be"),
+                        wdata = self.io.get("rdata"),
                     )
                 )

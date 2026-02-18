@@ -9,7 +9,6 @@ from forastero import BaseTransaction
 class ObiChATrans(BaseTransaction):
     addr: int = 0
     wdata: int = 0
-    we: bool = False
+    we: bool = True
     be: int = 0
-
-
+    rdata: int = 0
