@@ -20,3 +20,19 @@ class ObiChARequestDriver(BaseDriver):
             await RisingEdge(self.clk)
         self.io.set("req", 0)
         await RisingEdge(self.clk)
+
+class ObiChARequestMonitor(BaseMonitor):
+    async def monitor(self, capture):
+        while True:
+            await RisingEdge(self.clk)
+            if self.rst.value == 0:
+                continue
+            if self.io.get("gnt") and self.io.get("req"):
+                capture(
+                    ObiChATrans(
+                        addr = self.io.get("addr"),
+                        wdata = self.io.get("wdata"),
+                        we = self.io.get("we"),
+                        be = self.io.get("be"),
+                    )
+                )

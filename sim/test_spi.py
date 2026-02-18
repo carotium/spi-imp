@@ -4,8 +4,9 @@ from forastero import BaseBench
 
 from base import get_test_runner, WAVES
 from handshake.io import ObiChAIO, ObiChRIO
-from handshake.requestor import ObiChARequestDriver
+from handshake.requestor import ObiChARequestDriver, ObiChARequestMonitor
 from handshake.sequences import obi_channel_a_write_trans
+from handshake.transaction import ObiChATrans
 
 class SpiImpTB(BaseBench):
     def __init__(self, dut):
@@ -14,9 +15,18 @@ class SpiImpTB(BaseBench):
         obi_r_io = ObiChRIO(dut, "obi", IORole.RESPONDER, io_style=io_suffix_style)
 
         self.register("obi_a_drv", ObiChARequestDriver(self, obi_a_io, self.clk, self.rst))
-
+        self.register("obi_a_monitor", ObiChARequestMonitor(self, obi_a_io, self.clk, self.rst))
         # Register callback on input driver to push reference to monitor
         #self.input_driver.subscribe(DriverEvent.ENQUEUE, self.push_reference)
+
+        self.obi_a_drv.subscribe(DriverEvent.ENQUEUE, self.push_reference)
+
+    def push_reference(self, driver: ObiChARequestDriver, event: DriverEvent, obj: ObiChATrans) -> None:
+        assert driver is self.obi_a_drv
+        assert event == DriverEvent.ENQUEUE
+        self.scoreboard.channels["obi_a_monitor"].push_reference(obj)
+
+
 
 @SpiImpTB.testcase(
     reset_wait_during=2,
