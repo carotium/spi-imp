@@ -7,7 +7,7 @@ from forastero.monitor import BaseMonitor
 
 from .transaction import ObiChATrans
 
-class ObiChARequestDriver(BaseDriver):
+class ObiChARequestWriteDriver(BaseDriver):
     async def drive(self, transaction: ObiChATrans):
         self.io.set("addr", transaction.addr)
         self.io.set("wdata", transaction.wdata)
@@ -19,6 +19,18 @@ class ObiChARequestDriver(BaseDriver):
         while self.io.get("gnt") == 0:
             await RisingEdge(self.clk)
         self.io.set("req", 0)
+        await RisingEdge(self.clk)
+
+class ObiChARequestReadDriver(BaseDriver):
+    async def drive(self, transaction: ObiChATrans):
+        self.io.set("addr", transaction.addr)
+        self.io.set("we", False)
+        self.io.set("be", transaction.be)
+
+        await RisingEdge(self.clk)
+        while self.io.get("rvalid") == 0:
+            await RisingEdge(self.clk)
+        self.io.get("rdata")
         await RisingEdge(self.clk)
 
 class ObiChARequestMonitor(BaseMonitor):
