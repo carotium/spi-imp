@@ -1,17 +1,9 @@
-//
-// OBI slave gets instructions from OBI master
-// It is intended to be a SPI master
-//
-
 module spi_imp #(
   parameter int unsigned ADDR_WIDTH = 32,
   parameter int unsigned DATA_WIDTH = 32,
 
-  parameter int unsigned TEST_WORDS = 8,
-  parameter logic [31:0] BASE_ADDR = 32'h0000,
-
   // Arbitrary max number for slck counter
-  parameter int unsigned SCLK_COUNTER_MAX = 4096
+  parameter int unsigned SCLK_COUNTER_MAX = 4095
 ) (
   input logic clk_i,
   input logic rstn_i,
@@ -25,7 +17,7 @@ module spi_imp #(
 
   input   logic                     obi_we_i,     // Write Enable - high write, low read
   input   logic [DATA_WIDTH/8-1:0]  obi_be_i,     // Byte Enable - is set for the bytes to read/write
-  
+
   //  R channel
   output  logic                     obi_rvalid_o, // Read Valid - response transfer request
   output  logic [DATA_WIDTH-1:0]    obi_rdata_o,   // Read Data - only valid for read transactions
@@ -34,101 +26,142 @@ module spi_imp #(
   output  logic                     spi_ss_o = '1,
   output  logic                     spi_sclk_o = '0,
   output  logic                     spi_mosi_o = '0,
-  input   logic                     spi_miso_i
+  input   logic                     spi_miso_i,
 
+  output  logic                     spi_done_o
 );
+    localparam DataRegAddr = 0;
+    localparam CtrlRegAddr = 1;
 
-typedef enum {
-  IDLE,
-  ADDRESS_PHASE,
-  RESPONSE_PHASE
+    logic [11:0] spi_sclk_counter;
 
-} state_t;
+    logic [7:0] data_reg;
 
-state_t state, state_next;
+    logic ctrl_start_bit;    // 0 bit
+    logic ctrl_busy_bit;     // 1 bit
+    logic ctrl_complete_bit; // 2 bit
 
-logic [ADDR_WIDTH/8-1:0] read_ptr, write_ptr;
+    logic obi_a_fire;
+    assign obi_a_fire = obi_req_i && obi_gnt_o;
 
-reg [DATA_WIDTH-1:0] int_data [ADDR_WIDTH];
+    logic spi_started_sending = 1'b0;
+    logic spi_stopped_sending = 1'b0;
 
-logic obi_read_done = '0;
-logic spi_transfer_done = '0;
-int spi_sclk_counter = 0;
 
-// SCLK creation
-always_ff @(posedge clk_i) begin
-  if(!rstn_i) begin
-    spi_ss_o <= '1;
-    spi_sclk_counter <= 0;
-    spi_sclk_o <= '0;
-  end else if(!spi_ss_o) begin
-    if(spi_sclk_counter == SCLK_COUNTER_MAX) begin
-      spi_sclk_counter <= 0;
-      spi_sclk_o <= '1;
-    end else begin
-      spi_sclk_o <= '0;
-      spi_sclk_counter++;
-    end
-  end
-end
-
-// This state decision
-always_ff @(posedge clk_i) begin
-  // If reset is low:
-  // rvalid shall be driven low.
-  if(!rstn_i) begin
-    state <= IDLE;
-  end else begin
-    // State is assigned on every positive clk edge (if rstn is not activated)
-    state <= state_next;
-  end
-end
-
-// Next state assignment
-always_comb begin
-  case(state)
-    IDLE: begin
-      obi_rvalid_o <= 1'b0;
-      obi_rdata_o <= '0;
-      obi_gnt_o <= '0;
-      if(obi_req_i) begin
-        // Manager indicated validity of address phase signals with setting req high
-        // We go to address phase
-        state_next <= ADDRESS_PHASE;
-      end else begin
-        // Else we stay in IDLE
-        state_next <= IDLE;
-      end
-
-    end
-    ADDRESS_PHASE: begin
-      // Subordinate indicates its readiness to accept the address phase signals by setting gnt high
-      obi_gnt_o <= 1'b1;
-      if(obi_req_i) begin
-        state_next <= RESPONSE_PHASE;
-      end else begin
-        state_next <= IDLE;
-      end
-
+    // OBI
+    // Grant
+    always_ff @(posedge clk_i) begin
+      if (~rstn_i)
+        obi_gnt_o <= 1'b0;
+      else if (obi_req_i)
+        obi_gnt_o <= 1'b1;
+      else
+        obi_gnt_o <= 1'b0;
     end
 
-    RESPONSE_PHASE: begin
-      // After a granted request, the subordinate indicates the validity of its response phase signals by setting rvalid high
-      obi_rvalid_o <= 1'b1;
-      // The manager indicates its readiness to accept the response phase signals by setting rready high
-      // rready is not mandatory, i skip
-
-      if(obi_we_i) begin
-        // Write transaction
-        int_data[obi_addr_i] <= obi_wdata_i;
-      end else begin
-        // Read transaction
-        obi_rdata_o <= int_data[obi_addr_i];
-      end
-      state_next <= IDLE;
+    // Data register
+    always_ff @(posedge clk_i) begin
+        if (~rstn_i)
+            data_reg <= '0;
+        else if (obi_a_fire && obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0])
+            data_reg <= obi_wdata_i[7:0];
     end
-    
-  endcase
-end
+
+    // Data output
+    always_ff @(posedge clk_i) begin
+        if (~rstn_i)
+            obi_rdata_o <= '0;
+        else if (obi_a_fire && ~obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0])
+            obi_rdata_o <= {24'b0, data_reg};
+        else if (obi_a_fire && ~obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0])
+            obi_rdata_o <= {29'b0, ctrl_complete_bit, ctrl_busy_bit, ctrl_start_bit};
+    end
+
+    // Valid output
+    always_ff @(posedge clk_i) begin
+        if (~rstn_i)
+            obi_rvalid_o <= 1'b0;
+        else
+            obi_rvalid_o <= obi_a_fire;
+    end
+
+    // CONTROL LOGIC
+    // Control start bit
+    always_ff @(posedge clk_i) begin
+        if (~rstn_i)
+            ctrl_start_bit <= 1'b0;
+        else if (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit)
+            ctrl_start_bit <= obi_wdata_i[0];
+        else if (spi_started_sending)
+            ctrl_start_bit <= 1'b0;
+    end
+
+    // Control busy bit
+    always_ff @(posedge clk_i) begin
+        if (~rstn_i)
+            ctrl_busy_bit <= 1'b0;
+        else if (spi_started_sending)
+            ctrl_busy_bit <= 1'b1;
+        else if (spi_stopped_sending)
+            ctrl_busy_bit <= 1'b0;
+    end
+
+    always_ff @(posedge clk_i) begin
+        if (~rstn_i)
+            ctrl_complete_bit <= 1'b0;
+        else if (spi_stopped_sending)
+            ctrl_complete_bit <= 1'b1;
+        else if (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0])
+            ctrl_complete_bit <= obi_wdata_i[2];
+    end
+
+    // SPI
+    //   SPI start sending
+    always_ff @(posedge clk_i) begin
+      if (~rstn_i)
+        spi_started_sending <= 1'b0;
+      else if (ctrl_start_bit)
+        spi_started_sending <= 1'b1;
+      else
+        spi_started_sending <= 1'b0;
+    end
+
+    //   SPI stop sending
+    always_ff @(posedge clk_i) begin
+      if (~rstn_i)
+        spi_stopped_sending <= 1'b0;
+    end
+
+    //   SPI Slave select
+    always_ff @(posedge clk_i) begin
+      if (~rstn_i)
+        spi_ss_o <= 1'b1;
+      else if (spi_started_sending)
+        spi_ss_o <= 1'b0;
+      else if (spi_stopped_sending)
+        spi_ss_o <= 1'b1;
+    end
+
+    //   SPI sclk
+    always_ff @(posedge clk_i) begin
+      if (~rstn_i)
+        spi_sclk_o <= 1'b0;
+      else if (spi_sclk_counter == SCLK_COUNTER_MAX)
+        spi_sclk_o <= 1'b1;
+      else
+        spi_sclk_o <= 1'b0;
+    end
+
+    //   SPI sclk counter
+    always_ff @(posedge clk_i) begin
+      if (~rstn_i)
+        spi_sclk_counter <= 0;
+      else if(spi_sclk_counter < SCLK_COUNTER_MAX && spi_started_sending)
+        spi_sclk_counter++;
+      else
+        spi_sclk_counter <= 0;
+    end
+
+    assign spi_done_o = ctrl_complete_bit;
 
 endmodule
