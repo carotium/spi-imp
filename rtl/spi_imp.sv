@@ -31,9 +31,9 @@ module spi_imp #(
   output  logic [DATA_WIDTH-1:0]    obi_rdata_o,   // Read Data - only valid for read transactions
 
   // SPI master
-  output  logic                     spi_ss_o = '0,
-  output  logic                     spi_sclk_o,
-  output  logic                     spi_mosi_o,
+  output  logic                     spi_ss_o = '1,
+  output  logic                     spi_sclk_o = '0,
+  output  logic                     spi_mosi_o = '0,
   input   logic                     spi_miso_i
 
 );
