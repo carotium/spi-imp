@@ -117,16 +117,15 @@ always_comb begin
       obi_rvalid_o <= 1'b1;
       // The manager indicates its readiness to accept the response phase signals by setting rready high
       // rready is not mandatory, i skip
-      if(obi_rvalid_o) begin
-        if(obi_we_i) begin
-          // Write transaction
-          int_data[obi_addr_i] <= obi_wdata_i;
-        end else begin
-          // Read transaction
-          obi_rdata_o <= int_data[obi_addr_i];
-        end
-        state_next <= IDLE;
+
+      if(obi_we_i) begin
+        // Write transaction
+        int_data[obi_addr_i] <= obi_wdata_i;
+      end else begin
+        // Read transaction
+        obi_rdata_o <= int_data[obi_addr_i];
       end
+      state_next <= IDLE;
     end
     
   endcase

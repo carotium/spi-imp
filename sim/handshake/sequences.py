@@ -8,18 +8,19 @@ from forastero.driver import DriverEvent
 from forastero.monitor import MonitorEvent
 from forastero.sequence import SeqContext, SeqProxy
 
-from .transaction import ObiChATrans
-from .requestor import ObiChARequestWriteDriver
+from .transaction import ObiChATrans, ObiChRTrans
+from .requestor import ObiChARequestDriver, ObiChRRequestMonitor
 
 @forastero.sequence(auto_lock=True)
-@forastero.requires("obi_a_drv", ObiChARequestWriteDriver)
-async def obi_channel_a_write_trans(
+@forastero.requires("obi_a_drv", ObiChARequestDriver)
+async def obi_channel_a_trans(
     ctx: SeqContext,
-    obi_a_drv: SeqProxy[ObiChARequestWriteDriver],
-    address: int,
-    data: int,
+    obi_a_drv: SeqProxy[ObiChARequestDriver],
+    trans: list[ObiChATrans]
 ) -> None:
-    await obi_a_drv.enqueue(
-        ObiChATrans(addr=address, wdata=data, we=True, be=0b1111),
-        wait_for=DriverEvent.POST_DRIVE,
-    ).wait()
+    for tran in trans:
+        await obi_a_drv.enqueue(
+            tran,
+            wait_for=DriverEvent.POST_DRIVE,
+        ).wait()
+
