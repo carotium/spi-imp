@@ -39,8 +39,8 @@ async def random_traffic(tb: SpiImpTB, log):
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=456))
 
     trans = [
-        ObiChATrans(addr=0x0001, wdata=123, we=True, be=0xF),
-        ObiChATrans(addr=0x0008, wdata=456, we=True, be=0xF),
+        ObiChATrans(addr=0x0001, wdata=1, we=True, be=0xF),
+        ObiChATrans(addr=0x0008, wdata=0, we=True, be=0xF),
         ObiChATrans(addr=0x0001, we=False, be=0xF),
         ObiChATrans(addr=0x0008, we=False, be=0xF),
     ]
