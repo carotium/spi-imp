@@ -12,3 +12,8 @@ class ObiChATrans(BaseTransaction):
     we: bool = True
     be: int = 0
     rdata: int = 0
+
+@dataclass(kw_only=True)
+class ObiChRTrans(BaseTransaction):
+    rvalid: bool = False
+    rdata: int = 0
