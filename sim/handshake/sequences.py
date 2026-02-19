@@ -9,13 +9,13 @@ from forastero.monitor import MonitorEvent
 from forastero.sequence import SeqContext, SeqProxy
 
 from .transaction import ObiChATrans
-from .requestor import ObiChARequestDriver
+from .requestor import ObiChARequestWriteDriver
 
 @forastero.sequence(auto_lock=True)
-@forastero.requires("obi_a_drv", ObiChARequestDriver)
+@forastero.requires("obi_a_drv", ObiChARequestWriteDriver)
 async def obi_channel_a_write_trans(
     ctx: SeqContext,
-    obi_a_drv: SeqProxy[ObiChARequestDriver],
+    obi_a_drv: SeqProxy[ObiChARequestWriteDriver],
     address: int,
     data: int,
 ) -> None:
