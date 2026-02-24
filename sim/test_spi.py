@@ -33,16 +33,14 @@ async def random_traffic(tb: SpiImpTB, log):
     log.info(f"Some traffic")
 
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0))
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0))
+    #tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0))
 
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=123))
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=456))
+    #tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=123))
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=87))
 
     trans = [
-        ObiChATrans(addr=0x0001, wdata=1, we=True, be=0xF),
-        ObiChATrans(addr=0x0008, wdata=0, we=True, be=0xF),
-        ObiChATrans(addr=0x0001, we=False, be=0xF),
-        ObiChATrans(addr=0x0008, we=False, be=0xF),
+        ObiChATrans(addr=0x0000, wdata=87, we=True, be=0x1),
+        ObiChATrans(addr=0x0000, we=False, be=0x1),
     ]
 
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
