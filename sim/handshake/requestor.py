@@ -30,7 +30,7 @@ class ObiChRRequestMonitor(BaseMonitor):
             await RisingEdge(self.clk)
             if self.rst.value == 0:
                 continue
-            if self.io.get("rvalid") == True:
+            if (self.io.get("rvalid") == True and self.io.get("we") == False):
                 capture(
                     ObiChRTrans(
                         rdata = self.io.get("rdata"),
