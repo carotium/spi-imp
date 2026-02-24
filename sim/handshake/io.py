@@ -36,7 +36,7 @@ class ObiChRIO(BaseIO):
             dut, 
             name, 
             role, 
-            [], 
+            ["we"], 
             ["rvalid", "rdata"], 
             io_style
         )
