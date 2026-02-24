@@ -224,7 +224,7 @@ module spi_imp #(
   end
 
   //   SPI start sending
-  assign spi_started_sending = ctrl_start_bit || ctrl_busy_bit;
+  assign spi_started_sending = ctrl_start_bit || ctrl_busy_bit && ~ctrl_complete_bit;
 
 //  always_ff @(posedge clk_i) begin
 //    if (~rstn_i)
