@@ -25,8 +25,6 @@ class ObiTransferTrans(BaseTransaction):
     be: int = 0
 
 @dataclass(kw_only=True)
-class SpiTransferTrans(BaseTransaction):
-    ss: bool = True
-    sclk: bool = True
-    mosi: bool = False
-    miso: bool = False
+class SpiTrans(BaseTransaction):
+    index: int = 0
+    data: int = 0
