@@ -3,8 +3,8 @@ module spi_imp #(
   parameter int unsigned DATA_WIDTH = 32,
 
   // Arbitrary max number for slck counter
-  parameter int unsigned SCLK_COUNTER_MAX = 20,
-  parameter int unsigned SPI_DATA_LENGTH = 4
+  parameter int unsigned SCLK_COUNTER_MAX = 19,
+  parameter int unsigned SPI_DATA_LENGTH = 8
 ) (
   input logic clk_i,
   input logic rstn_i,
@@ -39,7 +39,6 @@ module spi_imp #(
   logic spi_sclk_prev;
 
   logic [7:0] data_reg;
-  logic [SPI_DATA_LENGTH-1:0] spi_data;
 
   logic ctrl_start_bit;    // 0 bit
   logic ctrl_busy_bit;     // 1 bit
@@ -120,16 +119,7 @@ module spi_imp #(
       ctrl_complete_bit <= obi_wdata_i[2];
   end
 
-  always_ff @(posedge clk_i) begin
-    if(~rstn_i)
-      spi_data <= 4'b0;
-    else if(obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit)
-      spi_data <= obi_wdata_i[7:SPI_DATA_LENGTH];
-  end
-
-  // SPI
-  // change to state machine
-    
+  // SPI    
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
       spi_sclk_prev <= 1'b0;
@@ -137,7 +127,7 @@ module spi_imp #(
       spi_sclk_prev <= spi_sclk_o;
   end
 
-  // three states: sending, done_sending, idle
+  // three states: sending, done, idle
   typedef enum {
     IDLE,
     SENDING,
@@ -184,7 +174,6 @@ module spi_imp #(
         else
           spi_state_next <= DONE;
       end
-
     endcase
   end
 
@@ -196,19 +185,21 @@ module spi_imp #(
         spi_sclk_o <= 1'b1;
         spi_mosi_o <= 1'b0;
 
-        //spi_data_index <= 0;
       end
       SENDING: begin
         spi_ss_o <= 1'b0;
 
-        if(spi_sclk_counter <= SCLK_COUNTER_MAX/2)
+        if(spi_sclk_counter <= SCLK_COUNTER_MAX/2+1 && spi_sclk_counter != 0)
           spi_sclk_o <= 1'b0;
         else
           spi_sclk_o <= 1'b1;
+
+        if(spi_data_index < 8)
+          spi_mosi_o <= data_reg[7-spi_data_index];
         
       end
       DONE: begin
-
+        spi_ss_o <= 1'b1;
       end
       endcase
   end
@@ -226,48 +217,11 @@ module spi_imp #(
   //   SPI start sending
   assign spi_started_sending = ctrl_start_bit || ctrl_busy_bit && ~ctrl_complete_bit;
 
-//  always_ff @(posedge clk_i) begin
-//    if (~rstn_i)
-//      spi_started_sending <= 1'b0;
-//    else if (ctrl_start_bit || ctrl_busy_bit)
-//      spi_started_sending <= 1'b1;
-//    else
-//      spi_started_sending <= 1'b0;
-//  end
-
-  //   SPI stop sending
-//  always_ff @(posedge clk_i) begin
-//    if (~rstn_i)
-//      spi_stopped_sending <= 1'b0;
-//  end
-
-  //   SPI Slave select
-  //assign spi_ss_o = ~spi_started_sending;
-
-//  always_ff @(posedge clk_i) begin
-//    if (~rstn_i)
-//      spi_ss_o <= 1'b1;
-//    else if (spi_started_sending)
-//      spi_ss_o <= 1'b0;
-//    else if (spi_stopped_sending)
-//      spi_ss_o <= 1'b1;
-//  end
-
-  //   SPI sclk
-//  always_ff @(posedge clk_i) begin
-//    if (~rstn_i)
-//      spi_sclk_o <= 1'b1;
-//    else if (spi_sclk_counter <= SCLK_COUNTER_MAX/2)
-//      spi_sclk_o <= 1'b1;
-//    else
-//      spi_sclk_o <= 1'b0;
-//  end
-
   //   SPI sclk counter
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       spi_sclk_counter <= 0;
-    else if(spi_sclk_counter < SCLK_COUNTER_MAX && spi_started_sending)
+    else if(spi_sclk_counter < SCLK_COUNTER_MAX && ~spi_ss_o)
       spi_sclk_counter++;
     else
       spi_sclk_counter <= 0;
