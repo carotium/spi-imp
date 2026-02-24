@@ -23,3 +23,8 @@ class ObiTransferTrans(BaseTransaction):
     wdata: int = 0
     we: bool = False
     be: int = 0
+
+@dataclass(kw_only=True)
+class SpiTrans(BaseTransaction):
+    index: int = 0
+    data: int = 0
