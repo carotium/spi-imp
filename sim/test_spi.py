@@ -32,14 +32,18 @@ class SpiImpTB(BaseBench):
 async def random_traffic(tb: SpiImpTB, log):
     log.info(f"Some traffic")
 
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0))
-    #tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0))
-
-    #tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=123))
+    # Write to data reg and read from it
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=87))
+
+    # Write to data reg and read from ctrl reg
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=1))
+
 
     trans = [
         ObiChATrans(addr=0x0000, wdata=87, we=True, be=0x1),
+        ObiChATrans(addr=0x0000, we=False, be=0x1),
+
+        ObiChATrans(addr=0x0000, wdata=0x1, we=True, be=0x1),
         ObiChATrans(addr=0x0000, we=False, be=0x1),
     ]
 
