@@ -23,3 +23,10 @@ class ObiTransferTrans(BaseTransaction):
     wdata: int = 0
     we: bool = False
     be: int = 0
+
+@dataclass(kw_only=True)
+class SpiTransferTrans(BaseTransaction):
+    ss: bool = True
+    sclk: bool = True
+    mosi: bool = False
+    miso: bool = False
