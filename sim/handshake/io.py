@@ -53,7 +53,7 @@ class SpiIO(BaseIO):
             dut,
             name,
             role,
-            ["miso"],
             ["ss", "sclk", "mosi"],
+            ["miso"],
             io_style
         )
