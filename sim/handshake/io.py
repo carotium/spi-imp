@@ -40,3 +40,20 @@ class ObiChRIO(BaseIO):
             ["rvalid", "rdata"], 
             io_style
         )
+
+class SpiIO(BaseIO):
+    def __init__(
+        self,
+        dut: HierarchyObject,
+        name: str,
+        role: IORole,
+        io_style: Callable[[str | None, str, IORole, IORole], str] | None = None,
+    ):
+        super().__init__(
+            dut,
+            name,
+            role,
+            ["miso"],
+            ["ss", "sclk", "mosi"],
+            io_style
+        )
