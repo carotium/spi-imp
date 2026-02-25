@@ -47,7 +47,8 @@ module spi_imp #(
   logic ctrl_complete_bit; // 2 bit
 
   logic obi_a_fire;
-  assign obi_a_fire = obi_req_i && obi_gnt_o;
+
+  int spi_data_index = 0;  
 
   logic spi_started_sending;
   logic spi_stopped_sending;
@@ -61,9 +62,19 @@ module spi_imp #(
 
   spi_state_t spi_state, spi_state_next;
 
-  // always_comb - conditions for transitions between states
-  
-  // always_comb - transitions as a top priority decoder
+  assign obi_a_fire = obi_req_i && obi_gnt_o;
+
+  // conditions for transitions between states
+  always_comb begin
+    spi_started_sending <= (spi_state == IDLE) && (ctrl_start_bit || ctrl_busy_bit) && ~ctrl_complete_bit;
+    spi_stopped_sending <= (spi_data_index == SPI_DATA_LENGTH);
+  end
+  // transitions as a top priority decoder
+  always_comb begin
+    spi_state_next <= spi_started_sending ? SENDING : spi_state;
+    spi_state_next <= spi_stopped_sending ? DONE : spi_state_next;
+    spi_state_next <= (~ctrl_complete_bit && spi_stopped_sending) ? IDLE : spi_state_next;
+  end
 
   // OBI
   // Grant
@@ -82,7 +93,7 @@ module spi_imp #(
     if (~rstn_i)
       data_reg <= '0;
     else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0])
-      data_reg <= obi_wdata_i[7:0];
+      data_reg <= obi_wdata_i[SPI_DATA_LENGTH-1:0];
     end
 
   // Data output
@@ -150,82 +161,23 @@ module spi_imp #(
 
   end
 
-  int spi_data_index = 0;
-
-  // Next SPI state assignment
-  always_comb begin
-    case(spi_state)
-      IDLE: begin        
-        if(~rstn_i)
-          spi_state_next <= IDLE;
-        else if (spi_started_sending)
-          spi_state_next <= SENDING;
-        else
-          spi_state_next <= IDLE;
-      end
-      SENDING: begin
-        if(~rstn_i)
-          spi_state_next <= IDLE;
-        else if (spi_started_sending)
-          spi_state_next <= SENDING;
-        else if (spi_stopped_sending)
-          spi_state_next <= DONE;
-      end
-      DONE: begin
-        if (~rstn_i)
-          spi_state_next <= IDLE;
-        else if (~ctrl_complete_bit)
-          spi_state_next <= IDLE;
-        else
-          spi_state_next <= DONE;
-      end
-    endcase
-  end
-
   // FSM output assignment
 
-  // razbij always_comb ali resi signale z assign
-  //  assign spi_mosi_o = (state == idle) ? 1'b0 : data_req[7-spi_data_index]
-  always_comb begin
-    case(spi_state)
-      IDLE: begin
-        spi_ss_o <= 1'b1;
-        spi_sclk_o <= 1'b1;
-        spi_mosi_o <= 1'b0;
+  assign spi_ss_o = (spi_state == SENDING) ? 1'b0 : 1'b1;
+  assign spi_sclk_o = (spi_state == SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != IDLE) ? 1'b0 : 1'b1;
+  assign spi_mosi_o = (spi_state == IDLE) ? 1'b0 : data_reg[7 - spi_data_index];
 
-      end
-      SENDING: begin
-        spi_ss_o <= 1'b0;
+  assign spi_done_o = ctrl_complete_bit;
 
-        if(spi_sclk_counter <= SCLK_COUNTER_MAX/2 )//&& spi_sclk_counter != 0)
-          spi_sclk_o <= 1'b0;
-        else
-          spi_sclk_o <= 1'b1;
-
-        if(spi_data_index < 8)
-          spi_mosi_o <= data_reg[7-spi_data_index];
-        
-      end
-      DONE: begin
-        spi_ss_o <= 1'b1;
-      end
-      endcase
-  end
-
-
-  // Latch for spi_stopped_sending : loči na dva always_ff bloka
+  // Data index counter
   always_ff @(posedge clk_i) begin
-    if(~rstn_i) begin
+    if(~rstn_i)
       spi_data_index <= 0;
-      spi_stopped_sending <= 1'b0;
-    end else if(spi_sclk_o && ~spi_sclk_prev && ~spi_ss_o && spi_data_index < SPI_DATA_LENGTH)
-      spi_data_index <= spi_data_index + 1;
-    else if (spi_data_index == SPI_DATA_LENGTH)
-      spi_stopped_sending <= 1'b1;
+    else if(spi_sclk_o && ~spi_sclk_prev && ~spi_ss_o && spi_data_index < SPI_DATA_LENGTH)
+      spi_data_index++;
+    else if(spi_data_index == SPI_DATA_LENGTH)
+      spi_data_index <= 0;
   end
-
-  //   SPI start sending
-  assign spi_started_sending = ctrl_start_bit || ctrl_busy_bit && ~ctrl_complete_bit;
 
   //   SPI sclk counter
   always_ff @(posedge clk_i) begin
@@ -236,7 +188,5 @@ module spi_imp #(
     else
       spi_sclk_counter <= 0;
   end
-
-  assign spi_done_o = ctrl_complete_bit;
 
 endmodule
