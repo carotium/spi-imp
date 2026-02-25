@@ -80,6 +80,9 @@ class SpiMonitor(BaseMonitor):
                 
                 await RisingEdge(self.clk)
 
+            while(self.io.get("ss") == False):
+                await RisingEdge(self.clk)
+
             capture(
                 SpiTrans(
                     data = spi_data
