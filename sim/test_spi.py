@@ -39,7 +39,6 @@ async def random_traffic(tb: SpiImpTB, log):
 
     # Read from spi MISO, we expect same data we pushed in data reg
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x21))
-    #tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x2))
 
     trans = [
         # Write 87 to data_reg
@@ -56,7 +55,6 @@ async def random_traffic(tb: SpiImpTB, log):
     # First write to data_reg and read from it. Then write to data_reg
     # data we want to send over SPI, then run SPI transfer.
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
-
 
 def test_spi_runner():
     runner = get_test_runner("spi_imp")
