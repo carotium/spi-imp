@@ -2,7 +2,7 @@ from forastero.io import IORole, io_suffix_style
 from forastero.driver import DriverEvent
 from forastero import BaseBench
 
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import RisingEdge, FallingEdge
 from base import get_test_runner, WAVES
 from handshake.io import ObiChAIO, ObiChRIO, SpiIO
 from handshake.requestor import ObiChARequestDriver, ObiChRRequestMonitor, SpiMonitor
@@ -32,21 +32,45 @@ class SpiImpTB(BaseBench):
     shutdown_delay=1,
     shutdown_loops=1,
 )
-async def random_traffic(tb: SpiImpTB, log):
-    log.info(f"Some traffic")
+
+# se en testcase za med spi posiljanjem pisanje v data
+# v data reg ne sme pisat med spi transakcijo
+async def multiple_send(tb: SpiImpTB, log):
+    log.info(f"Multiple SPI transfers B2B")
+
+    trans = []
+    num_of_tran = 2
+
+    for i in range(0, num_of_tran):
+        tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=i))
+        trans = [
+            ObiChATrans(addr=0x0, wdata=i, we=True, be=0x1),
+            ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
+        ]
+
+        tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
+        await RisingEdge(tb.dut.spi_done_o)
+
+        #tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x0001, wdata=0x0, we=True, be=0x1)]))
+        #await FallingEdge(tb.dut.spi_done_o)
+
+@SpiImpTB.testcase(
+    reset_wait_during=2,
+    reset_wait_after=0,
+    timeout=1000,
+    shutdown_delay=1,
+    shutdown_loops=1,
+)
+async def single_send(tb: SpiImpTB, log):
+    log.info(f"Single SPI transaction")
 
     # Write to data reg and read from it
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=87))
+    #tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=87))
 
     # Read from spi MISO, we expect same data we pushed in data reg
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x21))
 
     trans = [
-        # Write 87 to data_reg
-        ObiChATrans(addr=0x0000, wdata=87, we=True, be=0x1),
-        # Read from data_reg
-        ObiChATrans(addr=0x0000, we=False, be=0x1),
-
         # Write some spi data to send to data_reg
         ObiChATrans(addr=0x0000, wdata=0x21, we=True, be=0x1),
         # Write to control reg to start spi transaction
@@ -57,8 +81,10 @@ async def random_traffic(tb: SpiImpTB, log):
     # data we want to send over SPI, then run SPI transfer.
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
+    # Then set spi done bit to 0
     await RisingEdge(tb.dut.spi_done_o)
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x0001, wdata=0x0, we=True, be=0x1)]))
+    
 
 def test_spi_runner():
     runner = get_test_runner("spi_imp")
