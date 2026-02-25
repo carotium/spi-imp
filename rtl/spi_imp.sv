@@ -42,16 +42,21 @@ module spi_imp #(
 
   logic [7:0] data_reg;
 
+  logic start_sending;
+
   logic ctrl_start_bit;    // 0 bit
   logic ctrl_busy_bit;     // 1 bit
   logic ctrl_complete_bit; // 2 bit
 
   logic obi_a_fire;
 
+  assign start_sending = (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit && obi_wdata_i[0]);
+
   int spi_data_index = 0;  
 
   logic spi_started_sending;
   logic spi_stopped_sending;
+  logic spi_completed_sending;
 
   // three states: sending, done, idle
   typedef enum {
@@ -66,14 +71,15 @@ module spi_imp #(
 
   // conditions for transitions between states
   always_comb begin
-    spi_started_sending <= (spi_state == IDLE) && (ctrl_start_bit || ctrl_busy_bit) && ~ctrl_complete_bit;
-    spi_stopped_sending <= (spi_data_index == SPI_DATA_LENGTH);
+    spi_started_sending = spi_state == IDLE     && start_sending;
+    spi_stopped_sending = spi_state == SENDING  && spi_data_index == SPI_DATA_LENGTH;
+    spi_completed_sending = spi_state == DONE && ~ctrl_complete_bit;
   end
   // transitions as a top priority decoder
   always_comb begin
-    spi_state_next <= spi_started_sending ? SENDING : spi_state;
-    spi_state_next <= spi_stopped_sending ? DONE : spi_state_next;
-    spi_state_next <= (~ctrl_complete_bit && spi_stopped_sending) ? IDLE : spi_state_next;
+    spi_state_next = spi_started_sending    ? SENDING : spi_state;
+    spi_state_next = spi_stopped_sending    ? DONE :    spi_state_next;
+    spi_state_next = spi_completed_sending  ? IDLE :    spi_state_next;
   end
 
   // OBI
@@ -103,7 +109,7 @@ module spi_imp #(
     else if (obi_a_fire && ~obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0])
       obi_rdata_o <= {24'b0, data_reg};
     else if (obi_a_fire && ~obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0])
-      obi_rdata_o <= {29'b0, ctrl_complete_bit, ctrl_busy_bit, ctrl_start_bit};
+      obi_rdata_o <= {29'b0, ctrl_complete_bit, ctrl_busy_bit, 1'b0};
   end
 
   // Valid output
@@ -116,14 +122,14 @@ module spi_imp #(
 
   // CONTROL LOGIC
   // Control start bit
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      ctrl_start_bit <= 1'b0;
-    else if (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit)
-      ctrl_start_bit <= obi_wdata_i[0];
-    else if (spi_started_sending)
-      ctrl_start_bit <= 1'b0;
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     ctrl_start_bit <= 1'b0;
+  //   else if (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit)
+  //     ctrl_start_bit <= obi_wdata_i[0];
+  //   else if (spi_started_sending)
+  //     ctrl_start_bit <= 1'b0;
+  // end
 
   // Control busy bit
   always_ff @(posedge clk_i) begin
