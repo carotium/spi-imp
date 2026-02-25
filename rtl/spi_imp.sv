@@ -2,10 +2,10 @@ module spi_imp #(
   parameter int unsigned ADDR_WIDTH = 32,
   parameter int unsigned DATA_WIDTH = 32,
 
+  parameter int unsigned INPUT_CLK_FREQ_MHZ = 1000,
+  parameter int unsigned OUTPUT_SPI_CLK_FREQ = 50000000,
   // Arbitrary max number for slck counter
-  parameter int unsigned INPUT_CLK_FREQ_MHZ = 100,
-
-  parameter int unsigned SCLK_COUNTER_MAX = 19,
+  parameter int unsigned SCLK_COUNTER_MAX = INPUT_CLK_FREQ_MHZ * 1000000 / OUTPUT_SPI_CLK_FREQ - 1,
   parameter int unsigned SPI_DATA_LENGTH = 8
 ) (
   input logic clk_i,
@@ -62,7 +62,7 @@ module spi_imp #(
   spi_state_t spi_state, spi_state_next;
 
   // always_comb - conditions for transitions between states
-
+  
   // always_comb - transitions as a top priority decoder
 
   // OBI
@@ -197,7 +197,7 @@ module spi_imp #(
       SENDING: begin
         spi_ss_o <= 1'b0;
 
-        if(spi_sclk_counter <= SCLK_COUNTER_MAX/2+1 && spi_sclk_counter != 0)
+        if(spi_sclk_counter <= SCLK_COUNTER_MAX/2 )//&& spi_sclk_counter != 0)
           spi_sclk_o <= 1'b0;
         else
           spi_sclk_o <= 1'b1;
