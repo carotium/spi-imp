@@ -2,6 +2,7 @@ from forastero.io import IORole, io_suffix_style
 from forastero.driver import DriverEvent
 from forastero import BaseBench
 
+from cocotb.triggers import RisingEdge
 from base import get_test_runner, WAVES
 from handshake.io import ObiChAIO, ObiChRIO, SpiIO
 from handshake.requestor import ObiChARequestDriver, ObiChRRequestMonitor, SpiMonitor
@@ -55,6 +56,9 @@ async def random_traffic(tb: SpiImpTB, log):
     # First write to data_reg and read from it. Then write to data_reg
     # data we want to send over SPI, then run SPI transfer.
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
+
+    await RisingEdge(tb.dut.spi_done_o)
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x0001, wdata=0x0, we=True, be=0x1)]))
 
 def test_spi_runner():
     runner = get_test_runner("spi_imp")
