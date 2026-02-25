@@ -3,6 +3,8 @@ module spi_imp #(
   parameter int unsigned DATA_WIDTH = 32,
 
   // Arbitrary max number for slck counter
+  parameter int unsigned INPUT_CLK_FREQ_MHZ = 100,
+
   parameter int unsigned SCLK_COUNTER_MAX = 19,
   parameter int unsigned SPI_DATA_LENGTH = 8
 ) (
@@ -50,6 +52,18 @@ module spi_imp #(
   logic spi_started_sending;
   logic spi_stopped_sending;
 
+  // three states: sending, done, idle
+  typedef enum {
+    IDLE,     // Waiting for instructions
+    SENDING,  // Sending an SPI transaction
+    DONE      // Done sending an SPI transaction
+    } spi_state_t;
+
+  spi_state_t spi_state, spi_state_next;
+
+  // always_comb - conditions for transitions between states
+
+  // always_comb - transitions as a top priority decoder
 
   // OBI
   // Grant
@@ -127,15 +141,6 @@ module spi_imp #(
       spi_sclk_prev <= spi_sclk_o;
   end
 
-  // three states: sending, done, idle
-  typedef enum {
-    IDLE,
-    SENDING,
-    DONE
-    } spi_state_t;
-
-  spi_state_t spi_state, spi_state_next;
-
   // Current SPI state assignment
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
@@ -178,6 +183,9 @@ module spi_imp #(
   end
 
   // FSM output assignment
+
+  // razbij always_comb ali resi signale z assign
+  //  assign spi_mosi_o = (state == idle) ? 1'b0 : data_req[7-spi_data_index]
   always_comb begin
     case(spi_state)
       IDLE: begin
@@ -204,6 +212,8 @@ module spi_imp #(
       endcase
   end
 
+
+  // Latch for spi_stopped_sending : loči na dva always_ff bloka
   always_ff @(posedge clk_i) begin
     if(~rstn_i) begin
       spi_data_index <= 0;
