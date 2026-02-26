@@ -43,9 +43,10 @@ async def inbetween_send(tb: SpiImpTB, log):
 async def multiple_send(tb: SpiImpTB, log):
     log.info(f"Multiple SPI transfers B2B")
 
-    num_of_tran = 10
+    num_of_tran = 5
 
     for i in range(0, num_of_tran):
+        tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1)]))
         spi_transfer(tb, data=i)
         await RisingEdge(tb.dut.spi_done_o)
 
