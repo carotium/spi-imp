@@ -155,7 +155,7 @@ module spi_imp #(
   // SPI    
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
-      spi_sclk_prev <= 1'b0;
+      spi_sclk_prev <= 1'b1;
     else
       spi_sclk_prev <= spi_sclk_o;
   end
