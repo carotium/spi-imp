@@ -9,6 +9,8 @@ from handshake.requestor import ObiChARequestDriver, ObiChRRequestMonitor, SpiMo
 from handshake.sequences import obi_channel_a_trans
 from handshake.transaction import ObiChATrans, ObiChRTrans, SpiTrans
 
+import random
+
 class SpiImpTB(BaseBench):
     def __init__(self, dut):
         super().__init__(dut, clk=dut.clk_i, rst=dut.rstn_i, rst_active_high=False)
@@ -24,6 +26,18 @@ class SpiImpTB(BaseBench):
 
         self.register("spi_monitor", SpiMonitor(self, spi_io, self.clk, self.rst))
 
+@SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1)
+async def inbetween_send(tb: SpiImpTB, log):
+    log.info(f"A single spi transfer and try to write to data reg during spi transfer")
+
+    spi_transfer(tb, 16)
+    for i in range(0, random.randint(1, 8)):
+        await RisingEdge(tb.dut.spi_sclk_o)
+    trans = [
+        ObiChATrans(addr=0x0, wdata=0xA, we=True, be=0x1),
+        ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
+    ]
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 @SpiImpTB.testcase(
     reset_wait_during=2,
@@ -32,9 +46,6 @@ class SpiImpTB(BaseBench):
     shutdown_delay=1,
     shutdown_loops=1,
 )
-
-# se en testcase za med spi posiljanjem pisanje v data
-# v data reg ne sme pisat med spi transakcijo
 async def multiple_send(tb: SpiImpTB, log):
     log.info(f"Multiple SPI transfers B2B")
 
@@ -82,6 +93,14 @@ async def single_send(tb: SpiImpTB, log):
     await RisingEdge(tb.dut.spi_done_o)
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x0001, wdata=0x0, we=True, be=0x1)]))
     
+def spi_transfer(tb, data):
+    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=data))
+
+    trans = [
+        ObiChATrans(addr=0x0, wdata=data, we=True, be=0x1),
+        ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
+    ]
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 def test_spi_runner():
     runner = get_test_runner("spi_imp")
