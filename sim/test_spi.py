@@ -51,9 +51,6 @@ async def multiple_send(tb: SpiImpTB, log):
         tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
         await RisingEdge(tb.dut.spi_done_o)
 
-        #tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x0001, wdata=0x0, we=True, be=0x1)]))
-        #await FallingEdge(tb.dut.spi_done_o)
-
 @SpiImpTB.testcase(
     reset_wait_during=2,
     reset_wait_after=0,
