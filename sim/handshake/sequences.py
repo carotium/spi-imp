@@ -8,8 +8,8 @@ from forastero.driver import DriverEvent
 from forastero.monitor import MonitorEvent
 from forastero.sequence import SeqContext, SeqProxy
 
-from .transaction import ObiChATrans, ObiChRTrans, SpiTrans
-from .requestor import ObiChARequestDriver, ObiChRRequestMonitor, SpiRequestDriver
+from .transaction import ObiChATrans, ObiChRTrans
+from .requestor import ObiChARequestDriver, ObiChRReadyDriver
 
 @forastero.sequence(auto_lock=True)
 @forastero.requires("obi_a_drv", ObiChARequestDriver)
@@ -24,15 +24,18 @@ async def obi_channel_a_trans(
             wait_for=DriverEvent.POST_DRIVE,
         ).wait()
 
-#@forastero.sequence(auto_lock=True)
-#@forastero.requires("spi_drv", SpiRequestDriver)
-#async def spi_trans(
-#    ctx: SeqContext,
-#    spi_drv: SeqProxy[SpiRequestDriver],
-#    data: list[SpiTrans]
-#) -> None:
-#    for mosi in data:
-#        await spi_drv.enqueue(
-#            mosi,
-#            wait_for=DriverEvent.POST_DRIVE,
-#        ).wait()
+@forastero.sequence()
+@forastero.requires("obi_r_drv", ObiChRReadyDriver)
+async def obi_channel_r_trans(
+    ctx: SeqContext,
+    obi_r_drv: SeqProxy[ObiChRReadyDriver],
+) -> None:
+    while True:
+        async with ctx.lock(obi_r_drv):
+            obi_r_drv.enqueue(
+                ObiChRTrans(
+                    ready = ctx.random.choice((True, False)),
+                    cycles = ctx.random.randint(1, 10),
+                )
+            )
+        await obi_r_drv.wait_for(DriverEvent.PRE_DRIVE)

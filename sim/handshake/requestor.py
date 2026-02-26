@@ -2,6 +2,8 @@
 # Copyright (c) 2023-2024 Vypercore. All Rights Reserved
 
 from cocotb.triggers import RisingEdge, FallingEdge
+from cocotb.triggers import ClockCycles
+
 from forastero.driver import BaseDriver
 from forastero.monitor import BaseMonitor
 
@@ -22,6 +24,11 @@ class ObiChARequestDriver(BaseDriver):
             await RisingEdge(self.clk)
         self.io.set("req", 0)
         await RisingEdge(self.clk)
+
+class ObiChRReadyDriver(BaseDriver):
+    async def drive(self, transaction: ObiChRTrans):
+        self.io.set("rready", transaction.ready)
+        await ClockCycles(self.clk, transaction.cycles)
 
 class SpiRequestDriver(BaseDriver):
     async def drive(self, transaction: SpiTrans):
@@ -45,7 +52,7 @@ class ObiChRRequestMonitor(BaseMonitor):
             await RisingEdge(self.clk)
             if self.rst.value == 0:
                 continue
-            if (self.io.get("rvalid") == True and self.io.get("we") == False):
+            if (self.io.get("rvalid") == True and self.io.get("we") == False and self.io.get("rready") == True):
                 capture(
                     ObiChRTrans(
                         rdata = self.io.get("rdata"),

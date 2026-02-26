@@ -5,8 +5,8 @@ from forastero import BaseBench
 from cocotb.triggers import RisingEdge, FallingEdge
 from base import get_test_runner, WAVES
 from handshake.io import ObiChAIO, ObiChRIO, SpiIO
-from handshake.requestor import ObiChARequestDriver, ObiChRRequestMonitor, SpiMonitor
-from handshake.sequences import obi_channel_a_trans
+from handshake.requestor import ObiChARequestDriver, ObiChRRequestMonitor, SpiMonitor, ObiChRReadyDriver
+from handshake.sequences import obi_channel_a_trans, obi_channel_r_trans
 from handshake.transaction import ObiChATrans, ObiChRTrans, SpiTrans
 
 import random
@@ -21,6 +21,8 @@ class SpiImpTB(BaseBench):
         self.register("obi_a_drv", ObiChARequestDriver(self, obi_a_io, self.clk, self.rst))
 
         self.register("obi_r_monitor", ObiChRRequestMonitor(self, obi_r_io, self.clk, self.rst))
+
+        self.register("obi_r_drv", ObiChRReadyDriver(self, obi_r_io, self.clk, self.rst, blocking=False))
 
         #self.register("spi_drv", SpiRequestDriver(self, spi_io, self.clk, self.rst))
 
@@ -54,6 +56,24 @@ async def multiple_send(tb: SpiImpTB, log):
 async def single_send(tb: SpiImpTB, log):
     log.info(f"Single SPI transaction")
     spi_transfer(tb, data=0x21)
+
+@SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
+async def obi_write_read(tb: SpiImpTB, log):
+    log.info("Single write and then read OBI transaction")
+
+    tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
+
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x1))
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x2))
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x3))
+
+
+    obi_write(tb, 0x1)
+    await RisingEdge(tb.dut.obi_a_fire)
+    obi_write(tb, 0x2)
+    await RisingEdge(tb.dut.obi_a_fire)
+    obi_write(tb, 0x3)
+    await RisingEdge(tb.dut.obi_a_fire)
     
 def spi_transfer(tb, data):
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=data))
@@ -62,6 +82,18 @@ def spi_transfer(tb, data):
         ObiChATrans(addr=0x0, wdata=data, we=True, be=0x1),
         ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
     ]
+
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
+
+def obi_write(tb, data):
+    #tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=data))
+    trans = [
+        # Write data to data reg
+        ObiChATrans(addr=0x0, wdata=data, we=True, be=0x1),
+        # Read data from data reg
+        ObiChATrans(addr=0x0, we=False, be=0x1),
+    ]
+    #tb.dut.obi_rready_i.value = 1
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 def test_spi_runner():

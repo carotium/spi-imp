@@ -23,7 +23,8 @@ module spi_imp #(
 
   //  R channel
   output  logic                     obi_rvalid_o, // Read Valid - response transfer request
-  output  logic [DATA_WIDTH-1:0]    obi_rdata_o,   // Read Data - only valid for read transactions
+  input   logic                     obi_rready_i, // Read ready - master is ready to accept response transfer
+  output  logic [DATA_WIDTH-1:0]    obi_rdata_o,  // Read Data - only valid for read transactions
 
   // SPI master
   output  logic                     spi_ss_o,
@@ -106,9 +107,9 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       obi_rdata_o <= '0;
-    else if (obi_a_fire && ~obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0])
+    else if (obi_a_fire && ~obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && obi_rready_i)
       obi_rdata_o <= {24'b0, data_reg};
-    else if (obi_a_fire && ~obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0])
+    else if (obi_a_fire && ~obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && obi_rready_i)
       obi_rdata_o <= {29'b0, ctrl_complete_bit, ctrl_busy_bit, 1'b0};
   end
 
