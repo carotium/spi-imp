@@ -28,7 +28,7 @@ class SpiImpTB(BaseBench):
 @SpiImpTB.testcase(
     reset_wait_during=2,
     reset_wait_after=0,
-    timeout=1000,
+    timeout=2000,
     shutdown_delay=1,
     shutdown_loops=1,
 )
@@ -39,7 +39,7 @@ async def multiple_send(tb: SpiImpTB, log):
     log.info(f"Multiple SPI transfers B2B")
 
     trans = []
-    num_of_tran = 2
+    num_of_tran = 10
 
     for i in range(0, num_of_tran):
         tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=i))

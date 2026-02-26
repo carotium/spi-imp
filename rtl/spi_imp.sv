@@ -71,9 +71,9 @@ module spi_imp #(
 
   // conditions for transitions between states
   always_comb begin
-    spi_started_sending = spi_state == IDLE     && start_sending;
-    spi_stopped_sending = spi_state == SENDING  && spi_data_index == SPI_DATA_LENGTH;
-    spi_completed_sending = spi_state == DONE && ~ctrl_complete_bit;
+    spi_started_sending =   (spi_state == IDLE || spi_state == DONE)     && start_sending;
+    spi_stopped_sending =   spi_state == SENDING  && spi_data_index == SPI_DATA_LENGTH;
+    spi_completed_sending = spi_state == DONE     && ~ctrl_complete_bit;
   end
   // transitions as a top priority decoder
   always_comb begin
