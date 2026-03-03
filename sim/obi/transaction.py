@@ -15,8 +15,6 @@ class ObiChATrans(BaseTransaction):
 @dataclass(kw_only=True)
 class ObiChRTrans(BaseTransaction):
     #rvalid: bool = False
-    cycles: int = 10
-    ready: bool = True
     rdata: int = 0
 
 @dataclass(kw_only=True)
@@ -26,3 +24,7 @@ class ObiTransferTrans(BaseTransaction):
     we: bool = False
     be: int = 0
 
+@dataclass(kw_only=True)
+class ObiChRBackpressureTrans(BaseTransaction):
+    cycles: int = 1
+    ready: bool = False

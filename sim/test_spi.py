@@ -62,21 +62,23 @@ async def single_send(tb: SpiImpTB, log):
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
 async def obi_write_read(tb: SpiImpTB, log):
-    log.info("Single write and then read OBI transaction")
+    log.info("Three writes and reads for OBI transaction")
 
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
-
+    
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x1))
+
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x2))
+
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x3))
 
 
-    obi_write(tb, 0x1)
-    await RisingEdge(tb.dut.obi_a_fire)
-    obi_write(tb, 0x2)
-    await RisingEdge(tb.dut.obi_a_fire)
-    obi_write(tb, 0x3)
-    await RisingEdge(tb.dut.obi_a_fire)
+    obi_transfer(tb, 0x1)
+    await RisingEdge(tb.dut.obi_we_i)
+    obi_transfer(tb, 0x2)
+    await RisingEdge(tb.dut.obi_we_i)
+    obi_transfer(tb, 0x3)
+    await RisingEdge(tb.dut.obi_we_i)
     
 def spi_transfer(tb, data):
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=data))
@@ -88,8 +90,8 @@ def spi_transfer(tb, data):
 
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
-def obi_write(tb, data):
-    #tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=data))
+def obi_transfer(tb, data):
+    #tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
     trans = [
         # Write data to data reg
         ObiChATrans(addr=0x0, wdata=data, we=True, be=0x1),

@@ -8,7 +8,7 @@ from forastero.driver import DriverEvent
 from forastero.monitor import MonitorEvent
 from forastero.sequence import SeqContext, SeqProxy
 
-from .transaction import ObiChATrans, ObiChRTrans
+from .transaction import ObiChATrans, ObiChRTrans, ObiChRBackpressureTrans
 from .requestor import ObiChARequestDriver, ObiChRReadyDriver
 
 @forastero.sequence(auto_lock=True)
@@ -32,10 +32,10 @@ async def obi_channel_r_trans(
 ) -> None:
     while True:
         async with ctx.lock(obi_r_drv):
-            obi_r_drv.enqueue(
-                ObiChRTrans(
+            await obi_r_drv.enqueue(
+                ObiChRBackpressureTrans(
                     ready = ctx.random.choice((True, False)),
-                    cycles = ctx.random.randint(1, 10),
-                )
-            )
-        await obi_r_drv.wait_for(DriverEvent.PRE_DRIVE)
+                    cycles = ctx.random.randint(1, 3),
+                ),
+                wait_for=DriverEvent.PRE_DRIVE
+            ).wait()

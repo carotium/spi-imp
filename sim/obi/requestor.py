@@ -7,7 +7,7 @@ from cocotb.triggers import ClockCycles
 from forastero.driver import BaseDriver
 from forastero.monitor import BaseMonitor
 
-from obi.transaction import ObiChATrans, ObiChRTrans
+from obi.transaction import ObiChATrans, ObiChRTrans, ObiChRBackpressureTrans
 
 class ObiChARequestDriver(BaseDriver):
     async def drive(self, transaction: ObiChATrans):
@@ -26,12 +26,10 @@ class ObiChARequestDriver(BaseDriver):
         await RisingEdge(self.clk)
 
 class ObiChRReadyDriver(BaseDriver):
-    async def drive(self, transaction: ObiChRTrans):
+    async def drive(self, transaction: ObiChRBackpressureTrans):
+        print(f"ready={transaction.ready}, cycles={transaction.cycles}")
         self.io.set("rready", transaction.ready)
         await ClockCycles(self.clk, transaction.cycles)
-
-
-
 
 class ObiChRRequestMonitor(BaseMonitor):
     async def monitor(self, capture):
