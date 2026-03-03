@@ -4,10 +4,13 @@ from forastero import BaseBench
 
 from cocotb.triggers import RisingEdge, FallingEdge
 from base import get_test_runner, WAVES
-from handshake.io import ObiChAIO, ObiChRIO, SpiIO
-from handshake.requestor import ObiChARequestDriver, ObiChRRequestMonitor, SpiMonitor, ObiChRReadyDriver
-from handshake.sequences import obi_channel_a_trans, obi_channel_r_trans
-from handshake.transaction import ObiChATrans, ObiChRTrans, SpiTrans
+from obi.io import ObiChAIO, ObiChRIO
+from spi.io import SpiIO
+from obi.requestor import ObiChARequestDriver, ObiChRRequestMonitor, ObiChRReadyDriver
+from spi.requestor import SpiMonitor
+from obi.sequences import obi_channel_a_trans, obi_channel_r_trans
+from obi.transaction import ObiChATrans, ObiChRTrans
+from spi.transaction import SpiTrans
 
 import random
 
@@ -22,7 +25,7 @@ class SpiImpTB(BaseBench):
 
         self.register("obi_r_monitor", ObiChRRequestMonitor(self, obi_r_io, self.clk, self.rst))
 
-        self.register("obi_r_drv", ObiChRReadyDriver(self, obi_r_io, self.clk, self.rst, blocking=False))
+        self.register("obi_r_drv", ObiChRReadyDriver(self, obi_r_io, self.clk, self.rst))
 
         #self.register("spi_drv", SpiRequestDriver(self, spi_io, self.clk, self.rst))
 
