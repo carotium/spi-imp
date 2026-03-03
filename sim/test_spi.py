@@ -34,6 +34,7 @@ class SpiImpTB(BaseBench):
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1)
 async def inbetween_send(tb: SpiImpTB, log):
     log.info(f"A single spi transfer and try to write to data reg during spi transfer")
+    tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
     spi_transfer(tb, 16)
     for i in range(0, random.randint(1, 8)):
@@ -47,17 +48,20 @@ async def inbetween_send(tb: SpiImpTB, log):
 @SpiImpTB.testcase( reset_wait_during=2, reset_wait_after=0, timeout=2000, shutdown_delay=1, shutdown_loops=1,)
 async def multiple_send(tb: SpiImpTB, log):
     log.info(f"Multiple SPI transfers B2B")
+    tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
     num_of_tran = 5
 
     for i in range(0, num_of_tran):
-        tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1)]))
+        #tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1)]))
         spi_transfer(tb, data=i)
         await RisingEdge(tb.dut.spi_done_o)
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
 async def single_send(tb: SpiImpTB, log):
     log.info(f"Single SPI transaction")
+    tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
+
     spi_transfer(tb, data=0x21)
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
@@ -85,6 +89,9 @@ async def obi_write_read(tb: SpiImpTB, log):
     
 def spi_transfer(tb, data):
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=data))
+
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
     trans = [
         ObiChATrans(addr=0x0, wdata=data, we=True, be=0x1),
