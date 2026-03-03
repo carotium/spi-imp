@@ -66,10 +66,13 @@ async def obi_write_read(tb: SpiImpTB, log):
 
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
     
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x1))
 
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x2))
 
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x3))
 
 

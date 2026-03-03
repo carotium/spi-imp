@@ -47,10 +47,16 @@ module spi_imp #(
 
   // three states: sending, done, idle
   typedef enum {
-    IDLE,     // Waiting for instructions
-    SENDING,  // Sending an SPI transaction
-    DONE      // Done sending an SPI transaction
+    SPI_IDLE,     // Waiting for instructions
+    SPI_SENDING,  // Sending an SPI transaction
+    SPI_DONE      // Done sending an SPI transaction
     } spi_state_t;
+
+  typedef enum {
+    OBI_IDLE,       // Waiting for instructions
+    OBI_READING,    // OBI read transfer
+    OBI_WRITING     // OBI write transfer
+  } obi_state_t;
 
   /**************************************************************
   **********                DEFINITIONS                **********
@@ -76,6 +82,10 @@ module spi_imp #(
 
   spi_state_t spi_state, spi_state_next;
 
+  logic obi_started_reading, obi_started_writing, obi_done;
+
+  obi_state_t obi_state, obi_state_next;
+
   /**************************************************************
   **********               CONTROL LOGIC               **********
   **************************************************************/
@@ -84,7 +94,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       data_reg <= '0;
-    else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && spi_state == IDLE)
+    else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && spi_state == SPI_IDLE)
       data_reg <= obi_wdata_i[SPI_DATA_LENGTH-1:0];
     end
 
@@ -145,58 +155,89 @@ module spi_imp #(
   **********                    OBI                    **********
   **************************************************************/
 
-  assign obi_gnt_o = 1'b1;
+  // assign obi_gnt_o = 1'b1;
   assign obi_a_fire = obi_req_i && obi_gnt_o;
 
   // Data output
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      obi_rdata_o <= '0;
-    else if (obi_a_fire && ~obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && obi_rready_i)
-      obi_rdata_o <= {24'b0, data_reg};
-    else if (obi_a_fire && ~obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && obi_rready_i)
-      obi_rdata_o <= {29'b0, ctrl_complete_bit, ctrl_busy_bit, 1'b0};
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     obi_rdata_o <= '0;
+  //   else if (obi_a_fire && ~obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && obi_rready_i)
+  //     obi_rdata_o <= {24'b0, data_reg};
+  //   else if (obi_a_fire && ~obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && obi_rready_i)
+  //     obi_rdata_o <= {29'b0, ctrl_complete_bit, ctrl_busy_bit, 1'b0};
+  // end
 
   // Valid output
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      obi_rvalid_o <= 1'b0;
-    else
-      obi_rvalid_o <= obi_a_fire;
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     obi_rvalid_o <= 1'b0;
+  //   else
+  //     obi_rvalid_o <= obi_a_fire;
+  // end
 
   /**************************************************************
   **********                  SPI FSM                  **********
   **************************************************************/
 
   //  Output assignment
-  assign spi_ss_o = (spi_state == SENDING) ? 1'b0 : 1'b1;
-  assign spi_sclk_o = (spi_state == SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != IDLE) ? 1'b0 : 1'b1;
-  assign spi_mosi_o = (spi_state == IDLE) ? 1'b0 : data_reg[7 - spi_data_index];
+  assign spi_ss_o = (spi_state == SPI_SENDING) ? 1'b0 : 1'b1;
+  assign spi_sclk_o = (spi_state == SPI_SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != SPI_IDLE) ? 1'b0 : 1'b1;
+  assign spi_mosi_o = (spi_state == SPI_IDLE) ? 1'b0 : data_reg[7 - spi_data_index];
 
   assign spi_done_o = ctrl_complete_bit;
 
   // SPI FSM conditions for transitions
   always_comb begin
-    spi_started_sending =   (spi_state == IDLE)     && spi_start_sending;
-    spi_stopped_sending =   spi_state == SENDING  && spi_data_index == SPI_DATA_LENGTH;
-    spi_completed_sending = spi_state == DONE     && ~ctrl_complete_bit;
+    spi_started_sending =   (spi_state == SPI_IDLE)     && spi_start_sending;
+    spi_stopped_sending =   spi_state == SPI_SENDING  && spi_data_index == SPI_DATA_LENGTH;
+    spi_completed_sending = spi_state == SPI_DONE     && ~ctrl_complete_bit;
   end
 
   // SPI FSM transitions
   always_comb begin
-    spi_state_next = spi_started_sending    ? SENDING : spi_state;
-    spi_state_next = spi_stopped_sending    ? DONE :    spi_state_next;
-    spi_state_next = spi_completed_sending  ? IDLE :    spi_state_next;
+    spi_state_next = spi_started_sending    ? SPI_SENDING : spi_state;
+    spi_state_next = spi_stopped_sending    ? SPI_DONE :    spi_state_next;
+    spi_state_next = spi_completed_sending  ? SPI_IDLE :    spi_state_next;
   end
 
   // SPI FSM current state assignment
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
-      spi_state <= IDLE;
+      spi_state <= SPI_IDLE;
     else
       spi_state <= spi_state_next;
+  end
+
+  /**************************************************************
+  **********                  OBI FSM                  **********
+  **************************************************************/
+
+  // Output assignment
+  assign obi_gnt_o = (obi_state == OBI_IDLE);
+  assign obi_rvalid_o = (obi_state == OBI_READING || obi_state == OBI_WRITING);
+  assign obi_rdata_o = (obi_state == OBI_READING) ? {24'b0, data_reg} : 32'b0;
+
+  // OBI FSM conditions for transitions
+  always_comb begin
+    obi_started_reading = obi_state == OBI_IDLE && obi_req_i && obi_gnt_o && ~obi_we_i;
+    obi_started_writing = obi_state == OBI_IDLE && obi_req_i && obi_gnt_o && obi_we_i;
+    obi_done            = (obi_state == OBI_READING || obi_state == OBI_WRITING) && obi_rvalid_o && obi_rready_i;
+  end
+
+  // OBI FSM transitions
+  always_comb begin
+    obi_state_next = obi_started_reading  ? OBI_READING : obi_state;
+    obi_state_next = obi_started_writing  ? OBI_WRITING : obi_state_next;
+    obi_state_next = obi_done             ? OBI_IDLE    : obi_state_next;
+  end
+
+  // OBI FSM current state assignment
+  always_ff @(posedge clk_i) begin
+    if(~rstn_i)
+      obi_state <= OBI_IDLE;
+    else
+      obi_state <= obi_state_next;
   end
 
 endmodule

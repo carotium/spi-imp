@@ -27,7 +27,7 @@ class ObiChARequestDriver(BaseDriver):
 
 class ObiChRReadyDriver(BaseDriver):
     async def drive(self, transaction: ObiChRBackpressureTrans):
-        print(f"ready={transaction.ready}, cycles={transaction.cycles}")
+        #print(f"ready={transaction.ready}, cycles={transaction.cycles}")
         self.io.set("rready", transaction.ready)
         await ClockCycles(self.clk, transaction.cycles)
 
@@ -37,9 +37,10 @@ class ObiChRRequestMonitor(BaseMonitor):
             await RisingEdge(self.clk)
             if self.rst.value == 0:
                 continue
-            if (self.io.get("rvalid") == True and self.io.get("we") == False and self.io.get("rready") == True):
+            if (self.io.get("rvalid") and self.io.get("rready")):
                 capture(
                     ObiChRTrans(
+                        
                         rdata = self.io.get("rdata"),
                     )
                 )
