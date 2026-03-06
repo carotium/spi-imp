@@ -155,26 +155,7 @@ module spi_imp #(
   **********                    OBI                    **********
   **************************************************************/
 
-  // assign obi_gnt_o = 1'b1;
   assign obi_a_fire = obi_req_i && obi_gnt_o;
-
-  // Data output
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     obi_rdata_o <= '0;
-  //   else if (obi_a_fire && ~obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && obi_rready_i)
-  //     obi_rdata_o <= {24'b0, data_reg};
-  //   else if (obi_a_fire && ~obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && obi_rready_i)
-  //     obi_rdata_o <= {29'b0, ctrl_complete_bit, ctrl_busy_bit, 1'b0};
-  // end
-
-  // Valid output
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     obi_rvalid_o <= 1'b0;
-  //   else
-  //     obi_rvalid_o <= obi_a_fire;
-  // end
 
   /**************************************************************
   **********                  SPI FSM                  **********

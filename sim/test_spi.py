@@ -41,8 +41,9 @@ async def inbetween_send(tb: SpiImpTB, log):
         ObiChATrans(addr=0x0, wdata=0xA, we=True, be=0x1),
         ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
     ]
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
+    # Push reference for write acknowledge on OBI
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
 @SpiImpTB.testcase( reset_wait_during=2, reset_wait_after=0, timeout=2000, shutdown_delay=1, shutdown_loops=1,)
 async def multiple_send(tb: SpiImpTB, log):
