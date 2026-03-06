@@ -27,8 +27,6 @@ class SpiImpTB(BaseBench):
 
         self.register("obi_r_drv", ObiChRReadyDriver(self, obi_r_io, self.clk, self.rst))
 
-        #self.register("spi_drv", SpiRequestDriver(self, spi_io, self.clk, self.rst))
-
         self.register("spi_monitor", SpiMonitor(self, spi_io, self.clk, self.rst))
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1)
@@ -43,6 +41,7 @@ async def inbetween_send(tb: SpiImpTB, log):
         ObiChATrans(addr=0x0, wdata=0xA, we=True, be=0x1),
         ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
     ]
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 @SpiImpTB.testcase( reset_wait_during=2, reset_wait_after=0, timeout=2000, shutdown_delay=1, shutdown_loops=1,)
@@ -53,16 +52,27 @@ async def multiple_send(tb: SpiImpTB, log):
     num_of_tran = 5
 
     for i in range(0, num_of_tran):
-        #tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1)]))
         spi_transfer(tb, data=i)
         await RisingEdge(tb.dut.spi_done_o)
+        print("Awaited spi_done_o")
+        tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1)]))
+        await FallingEdge(tb.dut.spi_completed_sending)
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
 async def single_send(tb: SpiImpTB, log):
     log.info(f"Single SPI transaction")
+    # Schedule random ready driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
-
+    # Start SPI transaction with data (see more in spi_transfer function)
     spi_transfer(tb, data=0x21)
+
+    # Wait for SPI transaction to complete
+    await RisingEdge(tb.dut.ctrl_complete_bit)
+    trans = [
+        ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1),
+    ]
+    print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
 async def obi_write_read(tb: SpiImpTB, log):
@@ -88,16 +98,25 @@ async def obi_write_read(tb: SpiImpTB, log):
     await RisingEdge(tb.dut.obi_we_i)
     
 def spi_transfer(tb, data):
+    # Add reference to obi monitor for write acknowledge (write to ctrl reg to acknowledge SPI done transaction)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+
+    # Add reference to spi monitor for data we want to send
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=data))
 
+    # Add reference to obi monitor for write acknowledge (write data to data reg)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+    # Add reference to obi monitor for write acknowledge (write to ctrl reg to start SPI transaction)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
     trans = [
+        # Some data we want to send to write to data reg
         ObiChATrans(addr=0x0, wdata=data, we=True, be=0x1),
+        # Write to ctrl reg to start SPI transaction
         ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
     ]
 
+    print(f"Scheduling obi write and start SPI transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 def obi_transfer(tb, data):

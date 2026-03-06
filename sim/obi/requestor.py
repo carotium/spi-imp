@@ -44,4 +44,3 @@ class ObiChRRequestMonitor(BaseMonitor):
                         rdata = self.io.get("rdata"),
                     )
                 )
-
