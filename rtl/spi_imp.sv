@@ -94,7 +94,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       data_reg <= '0;
-    else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && spi_state == SPI_IDLE)
+    else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && spi_state == SPI_IDLE && obi_state == OBI_IDLE)
       data_reg <= obi_wdata_i[SPI_DATA_LENGTH-1:0];
     end
 
