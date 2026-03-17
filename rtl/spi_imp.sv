@@ -4,8 +4,6 @@ module spi_imp #(
 
   parameter int unsigned INPUT_CLK_FREQ_MHZ = 1000,
   parameter int unsigned OUTPUT_SPI_CLK_FREQ = 50000000,
-  // Arbitrary max number for slck counter
-  parameter int unsigned SCLK_COUNTER_MAX = INPUT_CLK_FREQ_MHZ * 1000000 / OUTPUT_SPI_CLK_FREQ - 1,
   parameter int unsigned SPI_DATA_LENGTH = 8
 ) (
   input logic clk_i,
@@ -41,21 +39,23 @@ module spi_imp #(
   localparam DataRegAddr = 0;
   localparam CtrlRegAddr = 1;
 
+  localparam SCLK_COUNTER_MAX = INPUT_CLK_FREQ_MHZ * 1000000 / OUTPUT_SPI_CLK_FREQ - 1;
+
   /**************************************************************
   **********                  TYPEDEF                  **********
   **************************************************************/
 
   // three states: sending, done, idle
   typedef enum {
-    SPI_IDLE,     // Waiting for instructions
-    SPI_SENDING,  // Sending an SPI transaction
-    SPI_DONE      // Done sending an SPI transaction
+    eSPI_IDLE,     // Waiting for instructions
+    eSPI_SENDING,  // Sending an SPI transaction
+    eSPI_DONE      // Done sending an SPI transaction
     } spi_state_t;
 
   typedef enum {
-    OBI_IDLE,       // Waiting for instructions
-    OBI_READING,    // OBI read transfer
-    OBI_WRITING     // OBI write transfer
+    eOBI_IDLE,       // Waiting for instructions
+    eOBI_READING,    // OBI read transfer
+    eOBI_WRITING     // OBI write transfer
   } obi_state_t;
 
   /**************************************************************
@@ -75,7 +75,6 @@ module spi_imp #(
   int spi_sclk_counter;
   logic spi_sclk_prev;
 
-  logic spi_start_sending;
   logic spi_started_sending;
   logic spi_stopped_sending;
   logic spi_completed_sending;
@@ -94,7 +93,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       data_reg <= '0;
-    else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && spi_state == SPI_IDLE && obi_state == OBI_IDLE)
+    else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
       data_reg <= obi_wdata_i[SPI_DATA_LENGTH-1:0];
     end
 
@@ -122,7 +121,7 @@ module spi_imp #(
   **********                    SPI                    **********
   **************************************************************/
 
-  assign spi_start_sending = (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit && obi_wdata_i[0]);
+  assign ctrl_start_bit = (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit && obi_wdata_i[0]);
 
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
@@ -152,71 +151,71 @@ module spi_imp #(
   end
 
   /**************************************************************
+  **********                  SPI FSM                  **********
+  **************************************************************/
+
+  //  Output assignment
+  assign spi_ss_o = (spi_state == eSPI_SENDING) ? 1'b0 : 1'b1;
+  assign spi_sclk_o = (spi_state == eSPI_SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != eSPI_IDLE) ? 1'b0 : 1'b1;
+  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : data_reg[7 - spi_data_index];
+
+  assign spi_done_o = ctrl_complete_bit;
+
+  // SPI FSM conditions for transitions
+  always_comb begin
+    spi_started_sending =   (spi_state == eSPI_IDLE)     && ctrl_start_bit;
+    spi_stopped_sending =   spi_state == eSPI_SENDING  && spi_data_index == SPI_DATA_LENGTH;
+    spi_completed_sending = spi_state == eSPI_DONE     && ~ctrl_complete_bit;
+  end
+
+  // SPI FSM transitions
+  always_comb begin
+    spi_state_next = spi_started_sending    ? eSPI_SENDING : spi_state;
+    spi_state_next = spi_stopped_sending    ? eSPI_DONE :    spi_state_next;
+    spi_state_next = spi_completed_sending  ? eSPI_IDLE :    spi_state_next;
+  end
+
+  // SPI FSM current state assignment
+  always_ff @(posedge clk_i) begin
+    if(~rstn_i)
+      spi_state <= eSPI_IDLE;
+    else
+      spi_state <= spi_state_next;
+  end
+
+  /**************************************************************
   **********                    OBI                    **********
   **************************************************************/
 
   assign obi_a_fire = obi_req_i && obi_gnt_o;
 
   /**************************************************************
-  **********                  SPI FSM                  **********
-  **************************************************************/
-
-  //  Output assignment
-  assign spi_ss_o = (spi_state == SPI_SENDING) ? 1'b0 : 1'b1;
-  assign spi_sclk_o = (spi_state == SPI_SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != SPI_IDLE) ? 1'b0 : 1'b1;
-  assign spi_mosi_o = (spi_state == SPI_IDLE) ? 1'b0 : data_reg[7 - spi_data_index];
-
-  assign spi_done_o = ctrl_complete_bit;
-
-  // SPI FSM conditions for transitions
-  always_comb begin
-    spi_started_sending =   (spi_state == SPI_IDLE)     && spi_start_sending;
-    spi_stopped_sending =   spi_state == SPI_SENDING  && spi_data_index == SPI_DATA_LENGTH;
-    spi_completed_sending = spi_state == SPI_DONE     && ~ctrl_complete_bit;
-  end
-
-  // SPI FSM transitions
-  always_comb begin
-    spi_state_next = spi_started_sending    ? SPI_SENDING : spi_state;
-    spi_state_next = spi_stopped_sending    ? SPI_DONE :    spi_state_next;
-    spi_state_next = spi_completed_sending  ? SPI_IDLE :    spi_state_next;
-  end
-
-  // SPI FSM current state assignment
-  always_ff @(posedge clk_i) begin
-    if(~rstn_i)
-      spi_state <= SPI_IDLE;
-    else
-      spi_state <= spi_state_next;
-  end
-
-  /**************************************************************
   **********                  OBI FSM                  **********
   **************************************************************/
 
   // Output assignment
-  assign obi_gnt_o = (obi_state == OBI_IDLE);
-  assign obi_rvalid_o = (obi_state == OBI_READING || obi_state == OBI_WRITING);
-  assign obi_rdata_o = (obi_state == OBI_READING) ? {24'b0, data_reg} : 32'b0;
+  assign obi_gnt_o = (obi_state == eOBI_IDLE);
+  assign obi_rvalid_o = (obi_state == eOBI_READING || obi_state == eOBI_WRITING);
+  assign obi_rdata_o = (obi_state == eOBI_READING) ? {24'b0, data_reg} : 32'b0;
 
   // OBI FSM conditions for transitions
   always_comb begin
-    obi_started_reading = obi_state == OBI_IDLE && obi_req_i && obi_gnt_o && ~obi_we_i;
-    obi_started_writing = obi_state == OBI_IDLE && obi_req_i && obi_gnt_o && obi_we_i;
-    obi_done            = (obi_state == OBI_READING || obi_state == OBI_WRITING) && obi_rvalid_o && obi_rready_i;
+    obi_started_reading = obi_state == eOBI_IDLE && obi_req_i && obi_gnt_o && ~obi_we_i;
+    obi_started_writing = obi_state == eOBI_IDLE && obi_req_i && obi_gnt_o && obi_we_i;
+    obi_done            = (obi_state == eOBI_READING || obi_state == eOBI_WRITING) && obi_rvalid_o && obi_rready_i;
   end
 
   // OBI FSM transitions
   always_comb begin
-    obi_state_next = obi_started_reading  ? OBI_READING : obi_state;
-    obi_state_next = obi_started_writing  ? OBI_WRITING : obi_state_next;
-    obi_state_next = obi_done             ? OBI_IDLE    : obi_state_next;
+    obi_state_next = obi_started_reading  ? eOBI_READING : obi_state;
+    obi_state_next = obi_started_writing  ? eOBI_WRITING : obi_state_next;
+    obi_state_next = obi_done             ? eOBI_IDLE    : obi_state_next;
   end
 
   // OBI FSM current state assignment
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
-      obi_state <= OBI_IDLE;
+      obi_state <= eOBI_IDLE;
     else
       obi_state <= obi_state_next;
   end
