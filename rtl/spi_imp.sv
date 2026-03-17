@@ -94,7 +94,7 @@ module spi_imp #(
     if (~rstn_i)
       data_reg <= '0;
     else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      data_reg[SPI_DATA_LENGTH-1:0] <= obi_wdata_i[SPI_DATA_LENGTH-1:0];
+      data_reg[SPI_DATA_LENGTH - 1:0] <= obi_wdata_i[SPI_DATA_LENGTH - 1:0];
     end
 
   // Control busy bit
@@ -157,7 +157,7 @@ module spi_imp #(
   //  Output assignment
   assign spi_ss_o = (spi_state == eSPI_SENDING) ? 1'b0 : 1'b1;
   assign spi_sclk_o = (spi_state == eSPI_SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != eSPI_IDLE) ? 1'b0 : 1'b1;
-  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : data_reg[7 - spi_data_index];
+  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : data_reg[SPI_DATA_LENGTH - 1 - spi_data_index];
 
   assign spi_done_o = ctrl_complete_bit;
 
