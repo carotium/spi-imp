@@ -20,15 +20,15 @@ class SpiMonitor(BaseMonitor):
                 captured = 0
                 await RisingEdge(self.clk)
 
-            while(self.io.get("ss") == True):
+            while(self.io.get("ss")):
                 index = 7
                 spi_data = 0
                 captured = 0
                 await RisingEdge(self.clk)
 
             while(self.io.get("ss") == False and index >= 0):
-                if(self.io.get("sclk") == True and captured == 0):
-                    spi_data += (int(self.io.get("mosi")) * 2 ** index)
+                if(self.io.get("sclk") and captured == 0):
+                    spi_data += (int(self.io.get("mosi")) << index)
                     captured = 1
                     index -= 1
                 elif(self.io.get("sclk") == False):

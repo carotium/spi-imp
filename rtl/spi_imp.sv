@@ -36,7 +36,7 @@ module spi_imp #(
   **********                 LOCALPARAM                **********
   **************************************************************/
 
-  localparam DataRegAddr = 0;
+  localparam DataOutRegAddr = 0;
   localparam CtrlRegAddr = 1;
 
   localparam SCLK_COUNTER_MAX = INPUT_CLK_FREQ_MHZ * 1000000 / OUTPUT_SPI_CLK_FREQ - 1;
@@ -62,7 +62,7 @@ module spi_imp #(
   **********                DEFINITIONS                **********
   **************************************************************/
 
-  logic [DATA_WIDTH-1:0] data_reg;
+  logic [DATA_WIDTH-1:0] data_out_reg, data_in_reg;
 
   logic ctrl_start_bit;    // 0 bit
   logic ctrl_busy_bit;     // 1 bit
@@ -92,9 +92,9 @@ module spi_imp #(
   // Data register
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
-      data_reg <= '0;
-    else if (obi_we_i && obi_addr_i == DataRegAddr && obi_be_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      data_reg[SPI_DATA_LENGTH - 1:0] <= obi_wdata_i[SPI_DATA_LENGTH - 1:0];
+      data_out_reg <= '0;
+    else if (obi_we_i && obi_addr_i == DataOutRegAddr && obi_be_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+      data_out_reg[SPI_DATA_LENGTH - 1:0] <= obi_wdata_i[SPI_DATA_LENGTH - 1:0];
     end
 
   // Control busy bit
@@ -123,6 +123,7 @@ module spi_imp #(
 
   assign ctrl_start_bit = (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit && obi_wdata_i[0]);
 
+  // Previous SPI serial clock
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
       spi_sclk_prev <= 1'b1;
@@ -150,6 +151,14 @@ module spi_imp #(
       spi_sclk_counter <= 0;
   end
 
+  always_ff @(posedge clk_i) begin
+    if(~rstn_i)
+      data_in_reg <= '0;
+    // On rising edge of SPI SCLK we gather data
+    else if(~spi_ss_o && ~spi_sclk_prev && spi_sclk_o)
+      data_in_reg[spi_data_index - 1] <= spi_miso_i;
+  end
+
   /**************************************************************
   **********                  SPI FSM                  **********
   **************************************************************/
@@ -157,7 +166,7 @@ module spi_imp #(
   //  Output assignment
   assign spi_ss_o = (spi_state == eSPI_SENDING) ? 1'b0 : 1'b1;
   assign spi_sclk_o = (spi_state == eSPI_SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != eSPI_IDLE) ? 1'b0 : 1'b1;
-  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : data_reg[SPI_DATA_LENGTH - 1 - spi_data_index];
+  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : data_out_reg[SPI_DATA_LENGTH - 1 - spi_data_index];
 
   assign spi_done_o = ctrl_complete_bit;
 
@@ -196,7 +205,7 @@ module spi_imp #(
   // Output assignment
   assign obi_gnt_o = (obi_state == eOBI_IDLE);
   assign obi_rvalid_o = (obi_state == eOBI_READING || obi_state == eOBI_WRITING);
-  assign obi_rdata_o = (obi_state == eOBI_READING) ? data_reg : 32'b0;
+  assign obi_rdata_o = (obi_state == eOBI_READING) ? data_out_reg : 32'b0;
 
   // OBI FSM conditions for transitions
   always_comb begin
