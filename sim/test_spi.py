@@ -38,8 +38,8 @@ async def inbetween_send(tb: SpiImpTB, log):
     for i in range(0, random.randint(1, 8)):
         await RisingEdge(tb.dut.spi_sclk_o)
     trans = [
-        ObiChATrans(addr=0x0, wdata=0xA, we=True, be=0x1),
-        ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
+        ObiChATrans(addr=0x2, wdata=0xA, we=True, be=0x1),
+        ObiChATrans(addr=0x0, wdata=0x1, we=True, be=0x1),
     ]
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
     # Push reference for write acknowledge on OBI
@@ -56,7 +56,7 @@ async def multiple_send(tb: SpiImpTB, log):
         spi_transfer(tb, data=i)
         await RisingEdge(tb.dut.spi_done_o)
         print("Awaited spi_done_o")
-        tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1)]))
+        tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=0x0, wdata=0x0, we=True, be=0x1)]))
         await FallingEdge(tb.dut.spi_completed_sending)
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
@@ -70,7 +70,7 @@ async def single_send(tb: SpiImpTB, log):
     # Wait for SPI transaction to complete
     await RisingEdge(tb.dut.ctrl_complete_bit)
     trans = [
-        ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1),
+        ObiChATrans(addr=0x0, wdata=0x0, we=True, be=0x1),
     ]
     print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
@@ -112,7 +112,7 @@ async def spi_write_read(tb: SpiImpTB, log):
 
     await RisingEdge(tb.dut.ctrl_complete_bit)
     trans = [
-        ObiChATrans(addr=0x1, wdata=0x0, we=True, be=0x1),
+        ObiChATrans(addr=0x0, wdata=0x0, we=True, be=0x1),
     ]
     print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
@@ -131,9 +131,9 @@ def spi_transfer(tb, data):
 
     trans = [
         # Some data we want to send to write to data reg
-        ObiChATrans(addr=0x0, wdata=data, we=True, be=0x1),
+        ObiChATrans(addr=0x2, wdata=data, we=True, be=0x1),
         # Write to ctrl reg to start SPI transaction
-        ObiChATrans(addr=0x1, wdata=0x1, we=True, be=0x1),
+        ObiChATrans(addr=0x0, wdata=0x1, we=True, be=0x1),
     ]
 
     print(f"Scheduling obi write and start SPI transaction")
@@ -143,9 +143,9 @@ def obi_transfer(tb, data):
     #tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
     trans = [
         # Write data to data reg
-        ObiChATrans(addr=0x0, wdata=data, we=True, be=0x1),
+        ObiChATrans(addr=0x2, wdata=data, we=True, be=0x1),
         # Read data from data reg
-        ObiChATrans(addr=0x0, we=False, be=0x1),
+        ObiChATrans(addr=0x2, we=False, be=0x1),
     ]
     #tb.dut.obi_rready_i.value = 1
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
