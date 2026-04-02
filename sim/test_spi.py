@@ -104,17 +104,49 @@ async def obi_write_read(tb: SpiImpTB, log):
     
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
 async def spi_write_read(tb: SpiImpTB, log):
+    tb.dut.spi_ss_i.value = 1
     log.info("Write and read on SPI")
 
     # Ready backpressure driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
     tb.dut.spi_miso_i.value = 1
-
-    spi_transfer(tb, data=0xDE)
+    
+    spi_transfer(tb, data=0x99)
     # Probably schedule MISO driver
 
+    await RisingEdge(tb.dut.spi_sclk_counter_en)
+    tb.dut.spi_ss_i.value = 0
+
     await RisingEdge(tb.dut.ctrl_complete_bit)
+    tb.dut.spi_ss_i.value = 1
+
+    trans = [
+        ObiChATrans(addr=CtrlRegAddr, wdata=0x0, we=True, be=0x1),
+    ]
+
+    print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
+
+@SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
+async def spi_flash_command(tb: SpiImpTB, log):
+    log.info("Send some commands to FLASH using SPI")
+
+    tb.dut.spi_ss_i.value = 1
+    tb.dut.spi_miso_i.value = 1
+
+    # Ready backpressure driver
+    tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
+
+    #tb.dut.spi_ss_i.value = 0
+    spi_transfer(tb, data=0x99)
+
+    await RisingEdge(tb.dut.spi_sclk_counter_en)
+    tb.dut.spi_ss_i.value = 0
+
+    await RisingEdge(tb.dut.ctrl_complete_bit)
+    tb.dut.spi_ss_i.value = 1
+
     trans = [
         ObiChATrans(addr=CtrlRegAddr, wdata=0x0, we=True, be=0x1),
     ]

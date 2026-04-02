@@ -29,6 +29,7 @@ class SpiMonitor(BaseMonitor):
             while(self.io.get("ss") == False and index >= 0):
                 if(self.io.get("sclk") and captured == 0):
                     spi_data += (int(self.io.get("mosi")) << index)
+                    print(f'mosi={self.io.get("mosi")}\n')
                     captured = 1
                     index -= 1
                 elif(self.io.get("sclk") == False):

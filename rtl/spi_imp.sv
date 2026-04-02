@@ -76,6 +76,7 @@ module spi_imp #(
 
   int spi_sclk_counter;
   logic spi_sclk_prev;
+  logic spi_sclk_counter_en;
 
   logic spi_started_sending, spi_stopped_sending, spi_completed_sending;
 
@@ -135,7 +136,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
       spi_data_index <= 0;
-    else if(spi_sclk_o && ~spi_sclk_prev && ~spi_ss_o && spi_data_index < SPI_DATA_LENGTH)
+    else if(spi_sclk_o && ~spi_sclk_prev && spi_data_index < SPI_DATA_LENGTH)
       spi_data_index++;
     else if(spi_data_index == SPI_DATA_LENGTH)
       spi_data_index <= 0;
@@ -145,7 +146,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       spi_sclk_counter <= 0;
-    else if(spi_sclk_counter < SCLK_COUNTER_MAX && ~spi_ss_o)
+    else if(spi_sclk_counter < SCLK_COUNTER_MAX && spi_sclk_counter_en)
       spi_sclk_counter++;
     else
       spi_sclk_counter <= 0;
@@ -155,7 +156,7 @@ module spi_imp #(
     if(~rstn_i)
       spi_read_reg <= '0;
     // On rising edge of SPI SCLK we gather data
-    else if(~spi_ss_o && ~spi_sclk_prev && spi_sclk_o)
+    else if(~spi_sclk_prev && spi_sclk_o)
       spi_read_reg[spi_data_index - 1] <= spi_miso_i;
   end
 
@@ -164,7 +165,9 @@ module spi_imp #(
   **************************************************************/
 
   //  Output assignment
-  assign spi_ss_o = (spi_state == eSPI_SENDING) ? 1'b0 : 1'b1;
+  //assign spi_ss_o = (spi_state == eSPI_SENDING) ? 1'b0 : 1'b1;
+  assign spi_sclk_counter_en = (spi_state == eSPI_SENDING) ? 1'b1 : 1'b0;
+  assign spi_ss_o = spi_ss_i[0];
   assign spi_sclk_o = (spi_state == eSPI_SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != eSPI_IDLE) ? 1'b0 : 1'b1;
   assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : spi_write_reg[SPI_DATA_LENGTH - 1 - spi_data_index];
 
