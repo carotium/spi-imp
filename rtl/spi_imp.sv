@@ -27,23 +27,29 @@ module spi_imp #(
   output  logic                     obi_rerr_o,
 
   // SPI master
-  output  logic                     spi_ss_o,
+  output  logic [NUM_SLAVES-1 : 0]  spi_ss_o,
   output  logic                     spi_sclk_o,
   output  logic                     spi_mosi_o,
   input   logic                     spi_miso_i,
 
-  input   logic [3:0]               spi_ss_i,
-  output  logic                     spi_done_o
+  // Output complete
+  output  logic                     complete_o
 );
   /**************************************************************
   **********                 LOCALPARAM                **********
   **************************************************************/
 
-  localparam CtrlRegAddr = 0;
-  localparam StatusRegAddr = 1;
-  localparam DataOutRegAddr = 2;
+  localparam TX_DATA_REG_ADDR = 0;
+  localparam RX_DATA_REG_ADDR = 4;
+  localparam SPI_DIV_CLK_REG_ADDR = 8;
+  localparam SS_REG_ADDR = 12;
+  localparam CTRL_REG_ADDR = 16;
 
-  //localparam SCLK_COUNTER_MAX = INPUT_CLK_FREQ_MHZ * 1000000 / OUTPUT_SPI_CLK_FREQ - 1;
+  //localparam CtrlRegAddr = 0;
+  //localparam StatusRegAddr = 1;
+  //localparam DataOutRegAddr = 2;
+
+  // Initial value for max SCLK counter
   localparam SCLK_COUNTER_MAX = 19;
 
   /**************************************************************
@@ -53,7 +59,8 @@ module spi_imp #(
   // three states: sending, done, idle
   typedef enum {
     eSPI_IDLE,     // Waiting for instructions
-    eSPI_SENDING,  // Sending an SPI transaction
+    eSPI_WRITING,  // Sending an SPI transaction
+    eSPI_READING,
     eSPI_DONE      // Done sending an SPI transaction
     } spi_state_t;
 
@@ -67,11 +74,23 @@ module spi_imp #(
   **********                DEFINITIONS                **********
   **************************************************************/
 
-  logic [DATA_WIDTH-1:0] spi_write_reg, spi_read_reg;
+  //logic [DATA_WIDTH-1:0] spi_write_reg, spi_read_reg;
+  logic [SPI_DATA_LENGTH-1:0] TX_DATA_REG, RX_DATA_REG;
 
-  logic ctrl_start_bit;    // 0 bit
-  logic ctrl_busy_bit;     // 1 bit
-  logic ctrl_complete_bit; // 2 bit
+  logic [DATA_WIDTH-1 : 0] SPI_DIV_CLK_REG;
+
+  logic [NUM_SLAVES-1 : 0] SS_REG;
+
+  logic [5:0] CTRL_REG;
+  /*
+  0 bit: Start Write - start sending on SPI
+  1 bit: Start Read - start reading from SPI
+  2 bit: Busy - currently sending or reading on SPI
+  3 bit: TX buffer empty - clears on OBI write to TX register
+  4 bit: RX buffer non-empty - clears on OBI read from RX register
+  5 bit: Complete (TX or RX) - "Writable" - sets after SPI transaction completes, waits for clear from CPU
+    - IRQ for CPU
+  */
 
   logic obi_a_fire;
   
@@ -81,7 +100,7 @@ module spi_imp #(
   logic spi_sclk_prev;
   logic spi_sclk_counter_en;
 
-  logic spi_started_sending, spi_stopped_sending, spi_completed_sending;
+  logic spi_started_writing, spi_stopped_writing, spi_started_reading, spi_stopped_reading, spi_completed;
 
   spi_state_t spi_state, spi_state_next;
 
@@ -93,39 +112,80 @@ module spi_imp #(
   **********               CONTROL LOGIC               **********
   **************************************************************/
 
-  // Data register
+  // TX data register
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
-      spi_write_reg <= '0;
-    else if (obi_awe_i && obi_aaddr_i == DataOutRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      spi_write_reg[SPI_DATA_LENGTH - 1:0] <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
+      TX_DATA_REG <= '0;
+    else if (obi_awe_i && obi_aaddr_i == TX_DATA_REG_ADDR && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+      TX_DATA_REG <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
     end
 
-  // Control busy bit
+  // RX data register
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
-      ctrl_busy_bit <= 1'b0;
-    else if (spi_started_sending)
-      ctrl_busy_bit <= 1'b1;
-    else if (spi_stopped_sending)
-      ctrl_busy_bit <= 1'b0;
+      RX_DATA_REG <= '0;
+    else if (obi_awe_i && obi_aaddr_i == RX_DATA_REG_ADDR && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+      RX_DATA_REG <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
+    end
+
+  // SPI division clock register
+  always_ff @(posedge clk_i) begin
+    if (~rstn_i)
+      SPI_DIV_CLK_REG <= SCLK_COUNTER_MAX;
+    else if (obi_awe_i && obi_aaddr_i == SPI_DIV_CLK_REG_ADDR && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+      SPI_DIV_CLK_REG <= obi_awdata_i;
+    end
+
+  // Slave select register SS_REG
+  always_ff @(posedge clk_i) begin
+    if (~rstn_i)
+      SS_REG <= 4'b0;
+    else if(obi_awe_i && obi_aaddr_i == SS_REG_ADDR && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+      SS_REG <= obi_awdata_i[3:0];
   end
 
-  // Cotrol complete bit
+  // Control register start write bit (0)
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     CTRL_REG[0] <= 1'b0;
+  //   else if (obi_a_fire && obi_awe_i && obi_aaddr_i == CTRL_REG_ADDR && obi_abe_i[0] && ~CTRL_REG[2])
+  //     CTRL_REG[0] <= obi_awdata_i[0];
+  // end
+
+  // Control register busy bit (2)
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     CTRL_REG[2] <= 1'b0;
+  //   else if (spi_started_writing || spi_started_reading)
+  //     CTRL_REG[2] <= 1'b1;
+  //   else if (spi_stopped_writing || spi_stopped_reading)
+  //     CTRL_REG[2] <= 1'b0;
+  // end
+
+  // Cotrol register assignment
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
-      ctrl_complete_bit <= 1'b0;
-    else if (spi_stopped_sending)
-      ctrl_complete_bit <= 1'b1;
-    else if (obi_a_fire && obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0])
-      ctrl_complete_bit <= obi_awdata_i[2];
+      CTRL_REG <= 6'b0;
+    else if (spi_started_reading || spi_started_writing)
+      CTRL_REG[2] <= 1'b1;
+    else if (spi_stopped_writing || spi_stopped_reading) begin
+      CTRL_REG[2] <= 1'b0;
+      CTRL_REG[5] <= 1'b1;
+    end else if (obi_a_fire && obi_awe_i && obi_aaddr_i == CTRL_REG_ADDR && obi_abe_i[0] && ~CTRL_REG[2])
+      CTRL_REG <= obi_awdata_i[5:0];
   end
   
   /**************************************************************
   **********                    SPI                    **********
   **************************************************************/
 
-  assign ctrl_start_bit = (obi_a_fire && obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && ~ctrl_busy_bit && obi_awdata_i[0]);
+//  assign CTRL_REG[0] = (obi_a_fire && obi_awe_i && obi_aaddr_i == CTRL_REG_ADDR && obi_abe_i[0] && ~CTRL_REG[2] && obi_awdata_i[0]);
+  // assign CTRL_REG[1] = (obi_a_fire && obi_awe_i && obi_aaddr_i == CTRL_REG_ADDR && obi_abe_i[0] && ~CTRL_REG[2] && obi_awdata_i[1]);
+//  assign CTRL_REG[5] = (obi_a_fire && obi_awe_i && obi_aaddr_i == CTRL_REG_ADDR && obi_abe_i[0] && ~CTRL_REG[2] && obi_awdata_i[5]);
+
+//  assign CTRL_REG[2] = 
+//  assign CTRL_REG[3]
+//  assign CTRL_REG[4] = 
 
   // Previous SPI serial clock
   always_ff @(posedge clk_i) begin
@@ -149,7 +209,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       spi_sclk_counter <= 0;
-    else if(spi_sclk_counter < SCLK_COUNTER_MAX && spi_sclk_counter_en)
+    else if(spi_sclk_counter < SPI_DIV_CLK_REG*2 && spi_sclk_counter_en)
       spi_sclk_counter++;
     else
       spi_sclk_counter <= 0;
@@ -157,10 +217,10 @@ module spi_imp #(
 
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
-      spi_read_reg <= '0;
+      RX_DATA_REG <= '0;
     // On rising edge of SPI SCLK we gather data
     else if(~spi_sclk_prev && spi_sclk_o)
-      spi_read_reg[spi_data_index - 1] <= spi_miso_i;
+      RX_DATA_REG[spi_data_index - 1] <= spi_miso_i;
   end
 
   /**************************************************************
@@ -168,26 +228,33 @@ module spi_imp #(
   **************************************************************/
 
   //  Output assignment
-  //assign spi_ss_o = (spi_state == eSPI_SENDING) ? 1'b0 : 1'b1;
-  assign spi_sclk_counter_en = (spi_state == eSPI_SENDING) ? 1'b1 : 1'b0;
-  assign spi_ss_o = spi_ss_i[0];
-  assign spi_sclk_o = (spi_state == eSPI_SENDING && spi_sclk_counter <= SCLK_COUNTER_MAX/2 && spi_state != eSPI_IDLE) ? 1'b0 : 1'b1;
-  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : spi_write_reg[SPI_DATA_LENGTH - 1 - spi_data_index];
+  //assign spi_ss_o = (spi_state == eSPI_WRITING) ? 1'b0 : 1'b1;
+  assign spi_sclk_counter_en = (spi_state == eSPI_WRITING || spi_state == eSPI_READING) ? 1'b1 : 1'b0;
+  
+  assign spi_ss_o = (spi_state == eSPI_READING || spi_state == eSPI_WRITING) ? ~(SS_REG) : 4'b1111;
 
-  assign spi_done_o = ctrl_complete_bit;
+  assign spi_sclk_o = ((spi_state == eSPI_WRITING || spi_state == eSPI_READING) && spi_sclk_counter <= SPI_DIV_CLK_REG && spi_state != eSPI_IDLE) ? 1'b0 : 1'b1;
+  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : TX_DATA_REG[SPI_DATA_LENGTH - 1 - spi_data_index];
+
+  //assign spi_done_o = CTRL_REG[5];
+  
+  assign complete_o = CTRL_REG[5];
 
   // SPI FSM conditions for transitions
   always_comb begin
-    spi_started_sending =   (spi_state == eSPI_IDLE)     && ctrl_start_bit;
-    spi_stopped_sending =   spi_state == eSPI_SENDING  && spi_data_index == SPI_DATA_LENGTH;
-    spi_completed_sending = spi_state == eSPI_DONE     && ~ctrl_complete_bit;
+    spi_started_writing =   (spi_state == eSPI_IDLE)     && CTRL_REG[0];
+    spi_started_reading = (spi_state == eSPI_IDLE) && CTRL_REG[1];
+    spi_stopped_writing =   spi_state == eSPI_WRITING  && spi_data_index == SPI_DATA_LENGTH;
+    spi_stopped_reading = spi_state == eSPI_READING && spi_data_index == SPI_DATA_LENGTH;
+    spi_completed = spi_state == eSPI_DONE     && ~CTRL_REG[5];
   end
 
   // SPI FSM transitions
   always_comb begin
-    spi_state_next = spi_started_sending    ? eSPI_SENDING : spi_state;
-    spi_state_next = spi_stopped_sending    ? eSPI_DONE :    spi_state_next;
-    spi_state_next = spi_completed_sending  ? eSPI_IDLE :    spi_state_next;
+    spi_state_next = spi_started_writing                        ? eSPI_WRITING : spi_state;
+    spi_state_next = spi_started_reading                        ? eSPI_READING : spi_state_next;
+    spi_state_next = spi_stopped_writing || spi_stopped_reading ? eSPI_DONE :    spi_state_next;
+    spi_state_next = spi_completed                              ? eSPI_IDLE :    spi_state_next;
   end
 
   // SPI FSM current state assignment
@@ -211,7 +278,7 @@ module spi_imp #(
   // Output assignment
   assign obi_agnt_o = (obi_state == eOBI_IDLE);
   assign obi_rvalid_o = (obi_state == eOBI_READING || obi_state == eOBI_WRITING);
-  assign obi_rdata_o = (obi_state == eOBI_READING) ? spi_write_reg : 32'b0;
+  assign obi_rdata_o = (obi_state == eOBI_READING) ? {24'b0, TX_DATA_REG} : 32'b0;
 
   // OBI FSM conditions for transitions
   always_comb begin
