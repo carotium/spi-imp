@@ -1,9 +1,10 @@
 module spi_imp #(
   parameter int unsigned ADDR_WIDTH = 32,
   parameter int unsigned DATA_WIDTH = 32,
+  parameter int unsigned NUM_SLAVES = 4,
 
-  parameter int unsigned INPUT_CLK_FREQ_MHZ = 1000,
-  parameter int unsigned OUTPUT_SPI_CLK_FREQ = 50000000,
+  //parameter int unsigned INPUT_CLK_FREQ_MHZ = 1000,
+  //parameter int unsigned OUTPUT_SPI_CLK_FREQ = 50000000,
   parameter int unsigned SPI_DATA_LENGTH = 8
 ) (
   input logic clk_i,
@@ -41,7 +42,8 @@ module spi_imp #(
   localparam StatusRegAddr = 1;
   localparam DataOutRegAddr = 2;
 
-  localparam SCLK_COUNTER_MAX = INPUT_CLK_FREQ_MHZ * 1000000 / OUTPUT_SPI_CLK_FREQ - 1;
+  //localparam SCLK_COUNTER_MAX = INPUT_CLK_FREQ_MHZ * 1000000 / OUTPUT_SPI_CLK_FREQ - 1;
+  localparam SCLK_COUNTER_MAX = 19;
 
   /**************************************************************
   **********                  TYPEDEF                  **********

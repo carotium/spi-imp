@@ -38,7 +38,13 @@ async def inbetween_send(tb: SpiImpTB, log):
     log.info(f"A single spi transfer and try to write to data reg during spi transfer")
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
+    tb.dut.spi_ss_i.value = 1
+
     spi_transfer(tb, 16)
+
+    await RisingEdge(tb.dut.spi_sclk_counter_en)
+    tb.dut.spi_ss_i.value = 0
+
     for i in range(0, random.randint(1, 8)):
         await RisingEdge(tb.dut.spi_sclk_o)
     trans = [
@@ -46,6 +52,10 @@ async def inbetween_send(tb: SpiImpTB, log):
         ObiChATrans(addr=CtrlRegAddr, wdata=0x1, we=True, be=0x1),
     ]
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
+
+    await RisingEdge(tb.dut.ctrl_complete_bit)
+    tb.dut.spi_ss_i.value = 1
+
     # Push reference for write acknowledge on OBI
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
@@ -57,22 +67,37 @@ async def multiple_send(tb: SpiImpTB, log):
     num_of_tran = 5
 
     for i in range(0, num_of_tran):
+        tb.dut.spi_ss_i.value = 1
+
         spi_transfer(tb, data=i)
+
+        await RisingEdge(tb.dut.spi_sclk_counter_en)
+        tb.dut.spi_ss_i.value = 0
+
         await RisingEdge(tb.dut.spi_done_o)
         print("Awaited spi_done_o")
+        tb.dut.spi_ss_i.value = 1
+
+
         tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=CtrlRegAddr, wdata=0x0, we=True, be=0x1)]))
         await FallingEdge(tb.dut.spi_completed_sending)
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
 async def single_send(tb: SpiImpTB, log):
     log.info(f"Single SPI transaction")
+    tb.dut.spi_ss_i.value = 1
     # Schedule random ready driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
     # Start SPI transaction with data (see more in spi_transfer function)
-    spi_transfer(tb, data=0x21)
+    spi_transfer(tb, data=0xFE)
+
+    await RisingEdge(tb.dut.spi_sclk_counter_en)
+    tb.dut.spi_ss_i.value = 0
 
     # Wait for SPI transaction to complete
     await RisingEdge(tb.dut.ctrl_complete_bit)
+    tb.dut.spi_ss_i.value = 1
+
     trans = [
         ObiChATrans(addr=CtrlRegAddr, wdata=0x0, we=True, be=0x1),
     ]
