@@ -11,18 +11,18 @@ from obi.transaction import ObiChATrans, ObiChRTrans, ObiChRBackpressureTrans
 
 class ObiChARequestDriver(BaseDriver):
     async def drive(self, transaction: ObiChATrans):
-        self.io.set("addr", transaction.addr)
-        self.io.set("wdata", transaction.wdata)
-        self.io.set("we", transaction.we)
-        self.io.set("be", transaction.be)
+        self.io.set("aaddr", transaction.addr)
+        self.io.set("awdata", transaction.wdata)
+        self.io.set("awe", transaction.we)
+        self.io.set("abe", transaction.be)
 
         #print(f"transaction: {transaction.we}, addr:{transaction.addr}, wdata:{transaction.wdata}")
 
-        self.io.set("req", 1)
+        self.io.set("areq", 1)
         await RisingEdge(self.clk)
-        while self.io.get("gnt") == 0:
+        while self.io.get("agnt") == 0:
             await RisingEdge(self.clk)
-        self.io.set("req", 0)
+        self.io.set("areq", 0)
         await RisingEdge(self.clk)
 
 class ObiChRReadyDriver(BaseDriver):

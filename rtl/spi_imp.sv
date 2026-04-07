@@ -12,18 +12,19 @@ module spi_imp #(
 
   // OBI interface
   //  A channel
-  input   logic                     obi_req_i,    // Request - address transfer request
-  output  logic                     obi_gnt_o,    // Grant - ready to accept address transfer
-  input   logic [ADDR_WIDTH-1:0]    obi_addr_i,   // Address
-  input   logic [DATA_WIDTH-1:0]    obi_wdata_i,  // Write Data - only valid for write transaction
+  input   logic                     obi_areq_i,    // Request - address transfer request
+  output  logic                     obi_agnt_o,    // Grant - ready to accept address transfer
+  input   logic [ADDR_WIDTH-1:0]    obi_aaddr_i,   // Address
+  input   logic [DATA_WIDTH-1:0]    obi_awdata_i,  // Write Data - only valid for write transaction
 
-  input   logic                     obi_we_i,     // Write Enable - high write, low read
-  input   logic [DATA_WIDTH/8-1:0]  obi_be_i,     // Byte Enable - is set for the bytes to read/write
+  input   logic                     obi_awe_i,     // Write Enable - high write, low read
+  input   logic [DATA_WIDTH/8-1:0]  obi_abe_i,     // Byte Enable - is set for the bytes to read/write
 
   //  R channel
   output  logic                     obi_rvalid_o, // Read Valid - response transfer request
   input   logic                     obi_rready_i, // Read ready - master is ready to accept response transfer
   output  logic [DATA_WIDTH-1:0]    obi_rdata_o,  // Read Data - only valid for read transactions
+  output  logic                     obi_rerr_o,
 
   // SPI master
   output  logic                     spi_ss_o,
@@ -96,8 +97,8 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       spi_write_reg <= '0;
-    else if (obi_we_i && obi_addr_i == DataOutRegAddr && obi_be_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      spi_write_reg[SPI_DATA_LENGTH - 1:0] <= obi_wdata_i[SPI_DATA_LENGTH - 1:0];
+    else if (obi_awe_i && obi_aaddr_i == DataOutRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+      spi_write_reg[SPI_DATA_LENGTH - 1:0] <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
     end
 
   // Control busy bit
@@ -116,15 +117,15 @@ module spi_imp #(
       ctrl_complete_bit <= 1'b0;
     else if (spi_stopped_sending)
       ctrl_complete_bit <= 1'b1;
-    else if (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0])
-      ctrl_complete_bit <= obi_wdata_i[2];
+    else if (obi_a_fire && obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0])
+      ctrl_complete_bit <= obi_awdata_i[2];
   end
   
   /**************************************************************
   **********                    SPI                    **********
   **************************************************************/
 
-  assign ctrl_start_bit = (obi_a_fire && obi_we_i && obi_addr_i == CtrlRegAddr && obi_be_i[0] && ~ctrl_busy_bit && obi_wdata_i[0]);
+  assign ctrl_start_bit = (obi_a_fire && obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && ~ctrl_busy_bit && obi_awdata_i[0]);
 
   // Previous SPI serial clock
   always_ff @(posedge clk_i) begin
@@ -201,21 +202,21 @@ module spi_imp #(
   **********                    OBI                    **********
   **************************************************************/
 
-  assign obi_a_fire = obi_req_i && obi_gnt_o;
+  assign obi_a_fire = obi_areq_i && obi_agnt_o;
 
   /**************************************************************
   **********                  OBI FSM                  **********
   **************************************************************/
 
   // Output assignment
-  assign obi_gnt_o = (obi_state == eOBI_IDLE);
+  assign obi_agnt_o = (obi_state == eOBI_IDLE);
   assign obi_rvalid_o = (obi_state == eOBI_READING || obi_state == eOBI_WRITING);
   assign obi_rdata_o = (obi_state == eOBI_READING) ? spi_write_reg : 32'b0;
 
   // OBI FSM conditions for transitions
   always_comb begin
-    obi_started_reading = obi_state == eOBI_IDLE && obi_req_i && obi_gnt_o && ~obi_we_i;
-    obi_started_writing = obi_state == eOBI_IDLE && obi_req_i && obi_gnt_o && obi_we_i;
+    obi_started_reading = obi_state == eOBI_IDLE && obi_areq_i && obi_agnt_o && ~obi_awe_i;
+    obi_started_writing = obi_state == eOBI_IDLE && obi_areq_i && obi_agnt_o && obi_awe_i;
     obi_done            = (obi_state == eOBI_READING || obi_state == eOBI_WRITING) && obi_rvalid_o && obi_rready_i;
   end
 
@@ -233,5 +234,10 @@ module spi_imp #(
     else
       obi_state <= obi_state_next;
   end
+
+ /**************************************************************
+ **********                   MISC                    **********
+ **************************************************************/
+assign obi_rerr_o = 1'b0;
 
 endmodule

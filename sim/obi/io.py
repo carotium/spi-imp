@@ -19,8 +19,8 @@ class ObiChAIO(BaseIO):
             dut, 
             name, 
             role, 
-            ["req", "addr", "wdata", "we", "be"], 
-            ["gnt"], 
+            ["areq", "aaddr", "awdata", "awe", "abe"], 
+            ["agnt"], 
             io_style
         )
 
@@ -36,7 +36,7 @@ class ObiChRIO(BaseIO):
             dut, 
             name, 
             role, 
-            ["we", "rready"], 
+            ["rready"], 
             ["rvalid", "rdata"], 
             io_style
         )

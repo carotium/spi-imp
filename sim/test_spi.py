@@ -121,11 +121,11 @@ async def obi_write_read(tb: SpiImpTB, log):
 
 
     obi_transfer(tb, 0x1)
-    await RisingEdge(tb.dut.obi_we_i)
+    await RisingEdge(tb.dut.obi_awe_i)
     obi_transfer(tb, 0x2)
-    await RisingEdge(tb.dut.obi_we_i)
+    await RisingEdge(tb.dut.obi_awe_i)
     obi_transfer(tb, 0x3)
-    await RisingEdge(tb.dut.obi_we_i)
+    await RisingEdge(tb.dut.obi_awe_i)
     
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
 async def spi_write_read(tb: SpiImpTB, log):
