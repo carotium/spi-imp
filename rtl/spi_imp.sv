@@ -43,8 +43,12 @@ module spi_imp #(
   localparam ss_reg_addr = 12;
   localparam ctrl_reg_addr = 16;
 
-  localparam ctrl_start_writing_bit_mask = 1;
-  localparam ctrl_start_reading_bit_mask = 2;
+  localparam ctrl_start_writing_bit_mask       = 0;
+  localparam ctrl_start_reading_bit_mask       = 1;
+  localparam ctrl_busy_bit_mask                = 2;
+  localparam ctrl_tx_buffer_empty_bit_mask     = 3;
+  localparam ctrl_rx_buffer_non_empty_bit_mask = 4;
+  localparam ctrl_complete_bit_mask            = 5;
 
   /**************************************************************
   **********                  TYPEDEF                  **********
@@ -76,6 +80,14 @@ module spi_imp #(
   logic [NUM_SLAVES-1 : 0] ss_reg;
 
   logic [5:0] CTRL_REG;
+  logic ctrl_start_writing_bit, 
+        ctrl_start_reading_bit, 
+        ctrl_busy_bit, 
+        ctrl_tx_buffer_empty_bit, 
+        ctrl_rx_buffer_non_empty_bit, 
+        ctrl_complete_bit;
+
+  logic [5:0] control_reg_value;
   /*
   0 bit: Start Write - start sending on SPI
   1 bit: Start Read - start reading from SPI
@@ -139,7 +151,30 @@ module spi_imp #(
       ss_reg <= obi_awdata_i[NUM_SLAVES-1:0];
   end
 
-  // Cotrol register assignment
+  // Control complete bit
+  always_ff @(posedge clk_i) begin
+    if (~rstn_i)
+      ctrl_complete_bit <= 1'b0;
+    else if(obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && spi_state == eSPI_DONE)
+      ctrl_complete_bit <= obi_awdata_i[ctrl_complete_bit_mask];
+  end
+
+  assign control_reg_value = (
+      ({31'b0, ctrl_start_reading_bit} << ctrl_start_reading_bit_mask)
+    | ({31'b0, ctrl_start_writing_bit} << ctrl_start_writing_bit_mask)
+    | ({31'b0, ctrl_busy_bit} << ctrl_busy_bit_mask)
+    | ({31'b0, ctrl_tx_buffer_empty_bit} << ctrl_tx_buffer_empty_bit_mask)
+    | ({31'b0, ctrl_rx_buffer_non_empty_bit} << ctrl_rx_buffer_non_empty_bit_mask)
+    | ({31'b0, ctrl_complete_bit} << ctrl_complete_bit_mask)
+    | 32'b0
+  );
+
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     CTRL_REG <= control_reg_value[5:0];
+  //   else if()
+  // end
+  // // Cotrol register assignment
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       CTRL_REG <= 6'b0;
@@ -226,14 +261,15 @@ module spi_imp #(
   assign spi_started_writing = obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & ctrl_start_writing_bit_mask);
   assign spi_started_reading = obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & ctrl_start_reading_bit_mask);
 
+  assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
+
+
   // SPI FSM conditions for transitions
   always_comb begin
-    //spi_started_writing =   (spi_state == eSPI_IDLE)     && CTRL_REG[0];
-    //spi_started_reading = (spi_state == eSPI_IDLE) && CTRL_REG[1];
     spi_stopped_writing =   spi_state == eSPI_WRITING  && spi_data_index == SPI_DATA_LENGTH;
     spi_stopped_reading = spi_state == eSPI_READING && spi_data_index == SPI_DATA_LENGTH;
     spi_completed = spi_state == eSPI_DONE     && ~CTRL_REG[5];
-    
+
   end
 
   // SPI FSM transitions
