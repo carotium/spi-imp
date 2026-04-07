@@ -70,7 +70,7 @@ module spi_imp #(
 
   logic [DATA_WIDTH-1 : 0] spi_div_clk_reg;
 
-  logic [NUM_SLAVES-1 : 0] SS_REG;
+  logic [NUM_SLAVES-1 : 0] ss_reg;
 
   logic [5:0] CTRL_REG;
   /*
@@ -85,7 +85,7 @@ module spi_imp #(
 
   logic obi_a_fire;
   
-  int spi_data_index = 0;  
+  logic [3:0] spi_data_index = 4'b0;  
 
   int spi_sclk_counter;
   logic spi_sclk_second_time;
@@ -128,12 +128,12 @@ module spi_imp #(
       spi_div_clk_reg <= obi_awdata_i;
     end
 
-  // Slave select register SS_REG
+  // Slave select register ss_reg
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
-      SS_REG <= 4'b0;
+      ss_reg <= 4'b0;
     else if(obi_awe_i && obi_aaddr_i == ss_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      SS_REG <= obi_awdata_i[3:0];
+      ss_reg <= obi_awdata_i[3:0];
   end
 
   // Control register start write bit (0)
@@ -190,11 +190,11 @@ module spi_imp #(
   // Data index counter
   always_ff @(posedge clk_i) begin
     if(~rstn_i)
-      spi_data_index <= 0;
+      spi_data_index <= 4'b0;
     else if(spi_sclk_counter == 0 && ~spi_sclk_o && spi_sclk_prev)
       spi_data_index++;
     else if(spi_data_index == SPI_DATA_LENGTH)
-      spi_data_index <= 0;
+      spi_data_index <= 4'b0;
   end
 
   // SPI sclk
@@ -241,7 +241,7 @@ module spi_imp #(
   //assign spi_ss_o = (spi_state == eSPI_WRITING) ? 1'b0 : 1'b1;
   assign spi_sclk_counter_en = (spi_state == eSPI_WRITING || spi_state == eSPI_READING);
   
-  assign spi_ss_o = (spi_state == eSPI_READING || spi_state == eSPI_WRITING) ? ~(SS_REG) : 4'b1111;
+  assign spi_ss_o = (spi_state == eSPI_READING || spi_state == eSPI_WRITING) ? ~(ss_reg) : 4'b1111;
 
   //assign spi_sclk_second_time = (spi_sclk_counter_en && spi_state != eSPI_IDLE);
 
