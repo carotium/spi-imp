@@ -85,7 +85,7 @@ module spi_imp #(
 
   logic obi_a_fire;
   
-  logic [3:0] spi_data_index = 4'b0;  
+  logic [3:0] spi_data_index;
 
   int spi_sclk_counter;
   logic spi_sclk_second_time;
