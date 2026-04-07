@@ -43,6 +43,9 @@ module spi_imp #(
   localparam ss_reg_addr = 12;
   localparam ctrl_reg_addr = 16;
 
+  localparam ctrl_start_writing_bit_mask = 1;
+  localparam ctrl_start_reading_bit_mask = 2;
+
   /**************************************************************
   **********                  TYPEDEF                  **********
   **************************************************************/
@@ -131,28 +134,10 @@ module spi_imp #(
   // Slave select register ss_reg
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
-      ss_reg <= 4'b0;
+      ss_reg <= '0;
     else if(obi_awe_i && obi_aaddr_i == ss_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      ss_reg <= obi_awdata_i[3:0];
+      ss_reg <= obi_awdata_i[NUM_SLAVES-1:0];
   end
-
-  // Control register start write bit (0)
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     CTRL_REG[0] <= 1'b0;
-  //   else if (obi_a_fire && obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && ~CTRL_REG[2])
-  //     CTRL_REG[0] <= obi_awdata_i[0];
-  // end
-
-  // Control register busy bit (2)
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     CTRL_REG[2] <= 1'b0;
-  //   else if (spi_started_writing || spi_started_reading)
-  //     CTRL_REG[2] <= 1'b1;
-  //   else if (spi_stopped_writing || spi_stopped_reading)
-  //     CTRL_REG[2] <= 1'b0;
-  // end
 
   // Cotrol register assignment
   always_ff @(posedge clk_i) begin
@@ -170,14 +155,6 @@ module spi_imp #(
   /**************************************************************
   **********                    SPI                    **********
   **************************************************************/
-
-//  assign CTRL_REG[0] = (obi_a_fire && obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && ~CTRL_REG[2] && obi_awdata_i[0]);
-  // assign CTRL_REG[1] = (obi_a_fire && obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && ~CTRL_REG[2] && obi_awdata_i[1]);
-//  assign CTRL_REG[5] = (obi_a_fire && obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && ~CTRL_REG[2] && obi_awdata_i[5]);
-
-//  assign CTRL_REG[2] = 
-//  assign CTRL_REG[3]
-//  assign CTRL_REG[4] = 
 
   // Previous SPI serial clock
   always_ff @(posedge clk_i) begin
@@ -238,27 +215,25 @@ module spi_imp #(
   **************************************************************/
 
   //  Output assignment
-  //assign spi_ss_o = (spi_state == eSPI_WRITING) ? 1'b0 : 1'b1;
   assign spi_sclk_counter_en = (spi_state == eSPI_WRITING || spi_state == eSPI_READING);
   
-  assign spi_ss_o = (spi_state == eSPI_READING || spi_state == eSPI_WRITING) ? ~(ss_reg) : 4'b1111;
+  assign spi_ss_o = ~(ss_reg);
 
-  //assign spi_sclk_second_time = (spi_sclk_counter_en && spi_state != eSPI_IDLE);
-
-  //assign spi_sclk_o = (spi_sclk_counter_en && spi_sclk_counter <= spi_div_clk_reg && spi_state != eSPI_IDLE) ? 1'b0 : 1'b1;
   assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : tx_data_reg[SPI_DATA_LENGTH - 1 - spi_data_index];
-
-  //assign spi_done_o = CTRL_REG[5];
   
   assign complete_o = CTRL_REG[5];
 
+  assign spi_started_writing = obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & ctrl_start_writing_bit_mask);
+  assign spi_started_reading = obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & ctrl_start_reading_bit_mask);
+
   // SPI FSM conditions for transitions
   always_comb begin
-    spi_started_writing =   (spi_state == eSPI_IDLE)     && CTRL_REG[0];
-    spi_started_reading = (spi_state == eSPI_IDLE) && CTRL_REG[1];
+    //spi_started_writing =   (spi_state == eSPI_IDLE)     && CTRL_REG[0];
+    //spi_started_reading = (spi_state == eSPI_IDLE) && CTRL_REG[1];
     spi_stopped_writing =   spi_state == eSPI_WRITING  && spi_data_index == SPI_DATA_LENGTH;
     spi_stopped_reading = spi_state == eSPI_READING && spi_data_index == SPI_DATA_LENGTH;
     spi_completed = spi_state == eSPI_DONE     && ~CTRL_REG[5];
+    
   end
 
   // SPI FSM transitions

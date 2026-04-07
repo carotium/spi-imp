@@ -53,8 +53,13 @@ async def inbetween_send(tb: SpiImpTB, log):
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
     await RisingEdge(tb.dut.complete_o)
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1)]))
+    await FallingEdge(tb.dut.complete_o)
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1)]))
 
     # Push reference for write acknowledge on OBI
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+    # Push reference to obi monitor for write acknowledge to SS reg
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
 @SpiImpTB.testcase( reset_wait_during=2, reset_wait_after=0, timeout=2000, shutdown_delay=1, shutdown_loops=1,)
@@ -73,9 +78,10 @@ async def multiple_send(tb: SpiImpTB, log):
         await RisingEdge(tb.dut.complete_o)
         print("Awaited ctrl_complete_bit")
 
-
         tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1)]))
         await FallingEdge(tb.dut.complete_o)
+        tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1)]))
+        await RisingEdge(tb.dut.clk_i)
 
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
 async def single_send(tb: SpiImpTB, log):
@@ -93,6 +99,7 @@ async def single_send(tb: SpiImpTB, log):
 
     trans = [
         ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1),
+        ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1),
     ]
     print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
@@ -134,11 +141,12 @@ async def spi_write_read(tb: SpiImpTB, log):
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
 
-    #await RisingEdge(tb.dut.complete_o)
-    await FallingEdge(tb.dut.spi_sclk_o)
+    await RisingEdge(tb.dut.complete_o)
+    #await FallingEdge(tb.dut.spi_sclk_o)
 
     trans = [
         ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1),
+        ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1),
     ]
 
     print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
@@ -161,6 +169,7 @@ async def spi_flash_command(tb: SpiImpTB, log):
 
     trans = [
         ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1),
+        ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1),
     ]
     print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
@@ -169,7 +178,7 @@ def spi_transfer(tb, data, slaves):
     # Add reference to obi monitor for write acknowledge (write to ctrl reg to acknowledge SPI done transaction)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
-    # Add reference to obi monitor for write acknowledge (write to SS reg)
+    # Add reference to obi monitor for write acknowledge (write to SS reg = 1)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
     # Add reference to spi monitor for data we want to send
@@ -178,6 +187,8 @@ def spi_transfer(tb, data, slaves):
     # Add reference to obi monitor for write acknowledge (write data to data reg)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
     # Add reference to obi monitor for write acknowledge (write to ctrl reg to start SPI transaction)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+    # Add reference to obi monitor for write acknowledge (write to SS reg = 0)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
     trans = [
