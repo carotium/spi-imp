@@ -37,18 +37,25 @@ module spi_imp #(
   **********                 LOCALPARAM                **********
   **************************************************************/
 
-  localparam tx_data_reg_addr = 0;
-  localparam rx_data_reg_addr = 4;
-  localparam spi_div_clk_reg_addr = 8;
-  localparam ss_reg_addr = 12;
-  localparam ctrl_reg_addr = 16;
+  localparam TxDataRegAddr = 0;
+  localparam RxDataRegAddr = 4;
+  localparam SpiDivClkRegAddr = 8;
+  localparam SsRegAddr = 12;
+  localparam CtrlRegAddr = 16;
 
-  localparam ctrl_start_writing_bit_mask       = 0;
-  localparam ctrl_start_reading_bit_mask       = 1;
-  localparam ctrl_busy_bit_mask                = 2;
-  localparam ctrl_tx_buffer_empty_bit_mask     = 3;
-  localparam ctrl_rx_buffer_non_empty_bit_mask = 4;
-  localparam ctrl_complete_bit_mask            = 5;
+  localparam CtrlStartWritingBitMask = 1;
+  localparam CtrlStartReadingBitMask = 2;
+  localparam CtrlBusyBitMask = 4;
+  localparam CtrlTxBufferEmptyBitMask = 8;
+  localparam CtrlRxBufferNonEmptyBitMask = 16;
+  localparam CtrlCompleteBitMask = 32;
+
+  localparam CtrlStartWritingBit       = 0;
+  localparam CtrlStartReadingBit       = 1;
+  localparam CtrlBusyBit                = 2;
+  localparam CtrlTxBufferEmptyBit     = 3;
+  localparam CtrlRxBufferNonEmptyBit = 4;
+  localparam CtrlCompleteBit            = 5;
 
   /**************************************************************
   **********                  TYPEDEF                  **********
@@ -123,7 +130,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       tx_data_reg <= '0;
-    else if (obi_awe_i && obi_aaddr_i == tx_data_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+    else if (obi_awe_i && obi_aaddr_i == TxDataRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
       tx_data_reg <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
     end
 
@@ -131,7 +138,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       rx_data_reg <= '0;
-    else if (obi_awe_i && obi_aaddr_i == rx_data_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+    else if (obi_awe_i && obi_aaddr_i == RxDataRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
       rx_data_reg <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
     end
 
@@ -139,7 +146,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       spi_div_clk_reg <= SCLK_COUNTER_RESET_VALUE;
-    else if (obi_awe_i && obi_aaddr_i == spi_div_clk_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+    else if (obi_awe_i && obi_aaddr_i == SpiDivClkRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
       spi_div_clk_reg <= obi_awdata_i;
     end
 
@@ -147,7 +154,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       ss_reg <= '0;
-    else if(obi_awe_i && obi_aaddr_i == ss_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+    else if(obi_awe_i && obi_aaddr_i == SsRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
       ss_reg <= obi_awdata_i[NUM_SLAVES-1:0];
   end
 
@@ -155,25 +162,22 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       ctrl_complete_bit <= 1'b0;
-    else if(obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && spi_state == eSPI_DONE)
-      ctrl_complete_bit <= obi_awdata_i[ctrl_complete_bit_mask];
+    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_DONE)
+      ctrl_complete_bit <= obi_awdata_i[CtrlCompleteBit];
+    else if(~obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0])
+      ctrl_complete_bit <= obi_rdata_o;
   end
 
   assign control_reg_value = (
-      ({31'b0, ctrl_start_reading_bit} << ctrl_start_reading_bit_mask)
-    | ({31'b0, ctrl_start_writing_bit} << ctrl_start_writing_bit_mask)
-    | ({31'b0, ctrl_busy_bit} << ctrl_busy_bit_mask)
-    | ({31'b0, ctrl_tx_buffer_empty_bit} << ctrl_tx_buffer_empty_bit_mask)
-    | ({31'b0, ctrl_rx_buffer_non_empty_bit} << ctrl_rx_buffer_non_empty_bit_mask)
-    | ({31'b0, ctrl_complete_bit} << ctrl_complete_bit_mask)
+      ({31'b0, ctrl_start_writing_bit} << CtrlStartWritingBitMask)
+    | ({31'b0, ctrl_start_reading_bit} << CtrlStartReadingBitMask)
+    | ({31'b0, ctrl_busy_bit} << CtrlBusyBitMask)
+    | ({31'b0, ctrl_tx_buffer_empty_bit} << CtrlTxBufferEmptyBitMask)
+    | ({31'b0, ctrl_rx_buffer_non_empty_bit} << CtrlRxBufferNonEmptyBitMask)
+    | ({31'b0, ctrl_complete_bit} << CtrlCompleteBitMask)
     | 32'b0
   );
 
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     CTRL_REG <= control_reg_value[5:0];
-  //   else if()
-  // end
   // // Cotrol register assignment
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
@@ -183,7 +187,7 @@ module spi_imp #(
     else if (spi_stopped_writing || spi_stopped_reading) begin
       CTRL_REG[2] <= 1'b0;
       CTRL_REG[5] <= 1'b1;
-    end else if (obi_a_fire && obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && ~CTRL_REG[2])
+    end else if (obi_a_fire && obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && ~CTRL_REG[2])
       CTRL_REG <= obi_awdata_i[5:0];
   end
   
@@ -258,11 +262,10 @@ module spi_imp #(
   
   assign complete_o = CTRL_REG[5];
 
-  assign spi_started_writing = obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & ctrl_start_writing_bit_mask);
-  assign spi_started_reading = obi_awe_i && obi_aaddr_i == ctrl_reg_addr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & ctrl_start_reading_bit_mask);
+  assign spi_started_writing = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartWritingBitMask);
+  assign spi_started_reading = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartReadingBitMask);
 
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
-
 
   // SPI FSM conditions for transitions
   always_comb begin
