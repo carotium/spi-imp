@@ -129,12 +129,13 @@ async def spi_write_read(tb: SpiImpTB, log):
 
     tb.dut.spi_miso_i.value = 1
     
-    spi_transfer(tb, data=0x99, slaves=0x1)
+    spi_transfer(tb, data=0x0, slaves=0x1)
     # Probably schedule MISO driver
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
 
-    await RisingEdge(tb.dut.complete_o)
+    #await RisingEdge(tb.dut.complete_o)
+    await FallingEdge(tb.dut.spi_sclk_o)
 
     trans = [
         ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1),
