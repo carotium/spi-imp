@@ -37,25 +37,25 @@ module spi_imp #(
   **********                 LOCALPARAM                **********
   **************************************************************/
 
-  localparam TxDataRegAddr = 0;
-  localparam RxDataRegAddr = 4;
-  localparam SpiDivClkRegAddr = 8;
-  localparam SsRegAddr = 12;
-  localparam CtrlRegAddr = 16;
+  localparam int TxDataRegAddr = 0;
+  localparam int RxDataRegAddr = 4;
+  localparam int SpiDivClkRegAddr = 8;
+  localparam int SsRegAddr = 12;
+  localparam int CtrlRegAddr = 16;
 
-  localparam CtrlStartWritingBitMask = 1;
-  localparam CtrlStartReadingBitMask = 2;
-  localparam CtrlBusyBitMask = 4;
-  localparam CtrlTxBufferEmptyBitMask = 8;
-  localparam CtrlRxBufferNonEmptyBitMask = 16;
-  localparam CtrlCompleteBitMask = 32;
+  localparam int CtrlStartWritingBitMask = 1;
+  localparam int CtrlStartReadingBitMask = 2;
+  localparam int CtrlBusyBitMask = 4;
+  localparam int CtrlTxBufferEmptyBitMask = 8;
+  localparam int CtrlRxBufferNonEmptyBitMask = 16;
+  localparam int CtrlCompleteBitMask = 32;
 
-  localparam CtrlStartWritingBit       = 0;
-  localparam CtrlStartReadingBit       = 1;
-  localparam CtrlBusyBit                = 2;
-  localparam CtrlTxBufferEmptyBit     = 3;
-  localparam CtrlRxBufferNonEmptyBit = 4;
-  localparam CtrlCompleteBit            = 5;
+  localparam int CtrlStartWritingBit       = 0;
+  localparam int CtrlStartReadingBit       = 1;
+  localparam int CtrlBusyBit                = 2;
+  localparam int CtrlTxBufferEmptyBit     = 3;
+  localparam int CtrlRxBufferNonEmptyBit = 4;
+  localparam int CtrlCompleteBit            = 5;
 
   /**************************************************************
   **********                  TYPEDEF                  **********
@@ -86,7 +86,6 @@ module spi_imp #(
 
   logic [NUM_SLAVES-1 : 0] ss_reg;
 
-  logic [5:0] CTRL_REG;
   logic ctrl_start_writing_bit, 
         ctrl_start_reading_bit, 
         ctrl_busy_bit, 
@@ -109,8 +108,8 @@ module spi_imp #(
   
   logic [3:0] spi_data_index;
 
-  int spi_sclk_counter;
-  logic spi_sclk_second_time;
+  logic [DATA_WIDTH-1:0] spi_sclk_counter;
+  logic spi_sclk_count_twice;
   logic spi_sclk_prev;
   logic spi_sclk_counter_en;
 
@@ -206,18 +205,18 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       spi_sclk_o <= 1'b0;
-    else if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_second_time)
+    else if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice)
       spi_sclk_o <= ~spi_sclk_o;
-    else if(spi_ss_o == 4'b1111)
+    else if(spi_ss_o == '1)
       spi_sclk_o <= 1'b0;
   end
 
   // SPI sclk count number to 2
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
-      spi_sclk_second_time <= 1'b0;
+      spi_sclk_count_twice <= 1'b0;
     else if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_counter_en)
-      spi_sclk_second_time <= ~spi_sclk_second_time;
+      spi_sclk_count_twice <= ~spi_sclk_count_twice;
   end
 
   //   SPI sclk counter
@@ -263,7 +262,7 @@ module spi_imp #(
   always_comb begin
     spi_stopped_writing =   spi_state == eSPI_WRITING  && spi_data_index == SPI_DATA_LENGTH;
     spi_stopped_reading = spi_state == eSPI_READING && spi_data_index == SPI_DATA_LENGTH;
-    spi_completed = spi_state == eSPI_DONE     && ~CTRL_REG[5];
+    spi_completed = spi_state == eSPI_DONE && ~ctrl_complete_bit;
 
   end
 
@@ -300,11 +299,11 @@ module spi_imp #(
 
   always_comb begin
     unique case (obi_aaddr_i)
-      TxDataRegAddr: obi_read_value = tx_data_reg;
-      RxDataRegAddr: obi_read_value = rx_data_reg;
+      TxDataRegAddr: obi_read_value = {'0, tx_data_reg};
+      RxDataRegAddr: obi_read_value = {'0, rx_data_reg};
       SpiDivClkRegAddr: obi_read_value = spi_div_clk_reg;
-      SsRegAddr: obi_read_value = ss_reg;
-      CtrlRegAddr: obi_read_value = control_reg_value;
+      SsRegAddr: obi_read_value = {'0, ss_reg};
+      CtrlRegAddr: obi_read_value = {'0, control_reg_value};
     endcase
   end
 
