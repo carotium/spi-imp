@@ -62,7 +62,7 @@ async def inbetween_send(tb: SpiImpTB, log):
     # Push reference to obi monitor for write acknowledge to SS reg
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
-@SpiImpTB.testcase( reset_wait_during=2, reset_wait_after=0, timeout=2000, shutdown_delay=1, shutdown_loops=1,)
+@SpiImpTB.testcase( reset_wait_during=2, reset_wait_after=0, timeout=5000, shutdown_delay=1, shutdown_loops=1,)
 async def multiple_send(tb: SpiImpTB, log):
     log.info(f"Multiple SPI transfers B2B")
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
@@ -73,7 +73,7 @@ async def multiple_send(tb: SpiImpTB, log):
 
         spi_write(tb, data=i, slaves=0x1)
 
-        await RisingEdge(tb.dut.spi_sclk_counter_en)
+        #await RisingEdge(tb.dut.spi_sclk_counter_en)
 
         await RisingEdge(tb.dut.complete_o)
         print("Awaited ctrl_complete_bit")

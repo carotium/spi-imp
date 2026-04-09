@@ -79,12 +79,57 @@ module spi_imp #(
   **********                DEFINITIONS                **********
   **************************************************************/
 
-  //logic [DATA_WIDTH-1:0] spi_write_reg, spi_read_reg;
-  logic [SPI_DATA_LENGTH-1:0] tx_data_reg, rx_data_reg;
+  // TX data register
+  logic [SPI_DATA_LENGTH-1:0] tx_data_reg;
 
+  register #(
+    .WORD_WIDTH(SPI_DATA_LENGTH)
+  ) tx_data_reg_inst (
+    .clk  (clk_i),
+    .rstn (rstn_i),
+    .ce   (obi_awe_i && obi_aaddr_i == TxDataRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .in   (obi_awdata_i[SPI_DATA_LENGTH - 1:0]),
+    .out  (tx_data_reg)
+  );
+
+  // RX data register
+  logic [SPI_DATA_LENGTH-1:0] rx_data_reg;
+
+  register #(
+    .WORD_WIDTH(SPI_DATA_LENGTH)
+  ) rx_data_reg_inst (
+    .clk  (clk_i),
+    .rstn (rstn_i),
+    .ce   (~spi_sclk_prev && spi_sclk_o && ctrl_start_reading_bit),
+    .in   (({7'b0, spi_miso_i} << spi_data_index) | rx_data_reg),
+    .out  (rx_data_reg)
+  );
+
+  // SPI Division clock register
   logic [DATA_WIDTH-1 : 0] spi_div_clk_reg;
 
+  register #(
+    .WORD_WIDTH(DATA_WIDTH),
+    .RESET_VALUE(SCLK_COUNTER_RESET_VALUE)
+  ) spi_div_clk_reg_inst (
+    .clk  (clk_i),
+    .rstn (rstn_i),
+    .ce   (obi_awe_i && obi_aaddr_i == SpiDivClkRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .in   (obi_awdata_i),
+    .out  (spi_div_clk_reg)
+  );
+
   logic [NUM_SLAVES-1 : 0] ss_reg;
+
+  register #(
+    .WORD_WIDTH(NUM_SLAVES)
+  ) ss_reg_inst (
+    .clk  (clk_i),
+    .rstn (rstn_i),
+    .ce   (obi_awe_i && obi_aaddr_i == SsRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .in   (obi_awdata_i[NUM_SLAVES-1:0]),
+    .out  (ss_reg)
+  );
 
   logic ctrl_start_writing_bit, 
         ctrl_start_reading_bit, 
@@ -94,6 +139,7 @@ module spi_imp #(
         ctrl_complete_bit;
 
   logic [5:0] control_reg_value;
+
   /*
   0 bit: Start Write - start sending on SPI
   1 bit: Start Read - start reading from SPI
@@ -108,7 +154,26 @@ module spi_imp #(
   
   logic [3:0] spi_data_index;
 
+  counter #(
+    .WORD_WIDTH(4)
+  ) spi_data_index_inst (
+      .clk (clk_i),
+      .rstn(rstn_i && ~({28'b0, spi_data_index} == SPI_DATA_LENGTH)),
+      .ce  (spi_sclk_counter == 0 && ~spi_sclk_o && spi_sclk_prev),
+      .count (spi_data_index)
+  );
+
   logic [DATA_WIDTH-1:0] spi_sclk_counter;
+
+  counter #(
+    .WORD_WIDTH(DATA_WIDTH)
+  ) spi_sclk_counter_inst (
+      .clk (clk_i),
+      .rstn(rstn_i && ~(spi_sclk_counter == spi_div_clk_reg) && spi_sclk_counter_en),
+      .ce  ((spi_sclk_counter < spi_div_clk_reg) && spi_sclk_counter_en),
+      .count (spi_sclk_counter)
+  );
+
   logic spi_sclk_count_twice;
   logic spi_sclk_prev;
   logic spi_sclk_counter_en;
@@ -128,36 +193,28 @@ module spi_imp #(
   **************************************************************/
 
   // TX data register
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      tx_data_reg <= '0;
-    else if (obi_awe_i && obi_aaddr_i == TxDataRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      tx_data_reg <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
-    end
-
-  // RX data register
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      rx_data_reg <= '0;
-    else if (obi_awe_i && obi_aaddr_i == RxDataRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      rx_data_reg <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
-    end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     tx_data_reg <= '0;
+  //   else if (obi_awe_i && obi_aaddr_i == TxDataRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+  //     tx_data_reg <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
+  //   end
 
   // SPI division clock register
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      spi_div_clk_reg <= SCLK_COUNTER_RESET_VALUE;
-    else if (obi_awe_i && obi_aaddr_i == SpiDivClkRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      spi_div_clk_reg <= obi_awdata_i;
-    end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     spi_div_clk_reg <= SCLK_COUNTER_RESET_VALUE;
+  //   else if (obi_awe_i && obi_aaddr_i == SpiDivClkRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+  //     spi_div_clk_reg <= obi_awdata_i;
+  //   end
 
   // Slave select register ss_reg
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      ss_reg <= '0;
-    else if(obi_awe_i && obi_aaddr_i == SsRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-      ss_reg <= obi_awdata_i[NUM_SLAVES-1:0];
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     ss_reg <= '0;
+  //   else if(obi_awe_i && obi_aaddr_i == SsRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
+  //     ss_reg <= obi_awdata_i[NUM_SLAVES-1:0];
+  // end
 
   // Control complete bit
   always_ff @(posedge clk_i) begin
@@ -172,7 +229,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       ctrl_start_reading_bit <= '0;
-    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartReadingBitMask))
+    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartReadingBitMask) > '0))
       ctrl_start_reading_bit <= 1'b1;
     else if(spi_completed)
       ctrl_start_reading_bit <= 1'b0;
@@ -181,20 +238,20 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       ctrl_start_writing_bit <= '0;
-    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartWritingBitMask))
+    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartWritingBitMask) > '0))
       ctrl_start_writing_bit <= 1'b1;
     else if(spi_completed)
       ctrl_start_writing_bit <= 1'b0;
   end
 
   assign control_reg_value = (
-      ({31'b0, ctrl_start_writing_bit} << CtrlStartWritingBit)
-    | ({31'b0, ctrl_start_reading_bit} << CtrlStartReadingBit)
-    | ({31'b0, ctrl_busy_bit} << CtrlBusyBit)
-    | ({31'b0, ctrl_tx_buffer_empty_bit} << CtrlTxBufferEmptyBit)
-    | ({31'b0, ctrl_rx_buffer_non_empty_bit} << CtrlRxBufferNonEmptyBit)
-    | ({31'b0, ctrl_complete_bit} << CtrlCompleteBit)
-    | 32'b0
+      ({5'b0, ctrl_start_writing_bit} << CtrlStartWritingBit)
+    | ({5'b0, ctrl_start_reading_bit} << CtrlStartReadingBit)
+    | ({5'b0, ctrl_busy_bit} << CtrlBusyBit)
+    | ({5'b0, ctrl_tx_buffer_empty_bit} << CtrlTxBufferEmptyBit)
+    | ({5'b0, ctrl_rx_buffer_non_empty_bit} << CtrlRxBufferNonEmptyBit)
+    | ({5'b0, ctrl_complete_bit} << CtrlCompleteBit)
+    | 6'b0
   );
 
   /**************************************************************
@@ -210,14 +267,14 @@ module spi_imp #(
   end
 
   // Data index counter
-  always_ff @(posedge clk_i) begin
-    if(~rstn_i)
-      spi_data_index <= 4'b0;
-    else if(spi_sclk_counter == 0 && ~spi_sclk_o && spi_sclk_prev)
-      spi_data_index++;
-    else if(spi_data_index == SPI_DATA_LENGTH)
-      spi_data_index <= 4'b0;
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if(~rstn_i)
+  //     spi_data_index <= 4'b0;
+  //   else if(spi_sclk_counter == 0 && ~spi_sclk_o && spi_sclk_prev)
+  //     spi_data_index++;
+  //   else if({28'b0, spi_data_index} == SPI_DATA_LENGTH)
+  //     spi_data_index <= 4'b0;
+  // end
 
   // SPI sclk
   always_ff @(posedge clk_i) begin
@@ -238,22 +295,22 @@ module spi_imp #(
   end
 
   //   SPI sclk counter
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      spi_sclk_counter <= 0;
-    else if(spi_sclk_counter < spi_div_clk_reg && spi_sclk_counter_en)
-      spi_sclk_counter++;
-    else if(spi_sclk_counter == spi_div_clk_reg)
-      spi_sclk_counter <= 0;
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     spi_sclk_counter <= 0;
+  //   else if(spi_sclk_counter < spi_div_clk_reg && spi_sclk_counter_en)
+  //     spi_sclk_counter++;
+  //   else if(spi_sclk_counter == spi_div_clk_reg)
+  //     spi_sclk_counter <= 0;
+  // end
 
-  always_ff @(posedge clk_i) begin
-    if(~rstn_i)
-      rx_data_reg <= '0;
-    // On rising edge of SPI SCLK we gather data
-    else if(~spi_sclk_prev && spi_sclk_o)
-      rx_data_reg[spi_data_index - 1] <= spi_miso_i;
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if(~rstn_i)
+  //     rx_data_reg <= '0;
+  //   // On rising edge of SPI SCLK we gather data
+  //   else if(~spi_sclk_prev && spi_sclk_o)
+  //     rx_data_reg[spi_data_index] <= spi_miso_i;
+  // end
 
   /**************************************************************
   **********                  SPI FSM                  **********
@@ -264,20 +321,20 @@ module spi_imp #(
   
   assign spi_ss_o = ~(ss_reg);
 
-  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : tx_data_reg[SPI_DATA_LENGTH - 1 - spi_data_index];
+  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : tx_data_reg[SPI_DATA_LENGTH - 1 - {28'b0, spi_data_index}];
   
   assign complete_o = ctrl_complete_bit;
 
-  assign spi_started_reading = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartReadingBitMask);
-  assign spi_started_writing = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartWritingBitMask);
+  assign spi_started_reading = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
+  assign spi_started_writing = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
 
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
 
   // SPI FSM conditions for transitions
   always_comb begin
 
-    spi_stopped_writing =   spi_state == eSPI_WRITING  && spi_data_index == SPI_DATA_LENGTH;
-    spi_stopped_reading = spi_state == eSPI_READING && spi_data_index == SPI_DATA_LENGTH;
+    spi_stopped_writing =   spi_state == eSPI_WRITING  && {28'b0, spi_data_index} == SPI_DATA_LENGTH;
+    spi_stopped_reading = spi_state == eSPI_READING && {28'b0, spi_data_index} == SPI_DATA_LENGTH;
     spi_completed = spi_state == eSPI_DONE && ~ctrl_complete_bit;
 
   end
@@ -315,11 +372,11 @@ module spi_imp #(
 
   always_comb begin
     unique case (obi_aaddr_i)
-      TxDataRegAddr: obi_read_value = {'0, tx_data_reg};
-      RxDataRegAddr: obi_read_value = {'0, rx_data_reg};
+      TxDataRegAddr: obi_read_value = {24'b0, tx_data_reg};
+      RxDataRegAddr: obi_read_value = {24'b0, rx_data_reg};
       SpiDivClkRegAddr: obi_read_value = spi_div_clk_reg;
-      SsRegAddr: obi_read_value = {'0, ss_reg};
-      CtrlRegAddr: obi_read_value = {'0, control_reg_value};
+      SsRegAddr: obi_read_value = {28'b0, ss_reg};
+      CtrlRegAddr: obi_read_value = {26'b0, control_reg_value};
     endcase
   end
 
