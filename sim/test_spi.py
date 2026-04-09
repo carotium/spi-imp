@@ -40,7 +40,7 @@ async def inbetween_send(tb: SpiImpTB, log):
     log.info(f"A single spi transfer and try to write to data reg during spi transfer")
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
-    spi_transfer(tb, 16, slaves=0x1)
+    spi_write(tb, 16, slaves=0x1)
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
 
@@ -71,7 +71,7 @@ async def multiple_send(tb: SpiImpTB, log):
 
     for i in range(0, num_of_tran):
 
-        spi_transfer(tb, data=i, slaves=0x1)
+        spi_write(tb, data=i, slaves=0x1)
 
         await RisingEdge(tb.dut.spi_sclk_counter_en)
 
@@ -89,8 +89,8 @@ async def single_send(tb: SpiImpTB, log):
     slaves = 0x1
     # Schedule random ready driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
-    # Start SPI transaction with data (see more in spi_transfer function)
-    spi_transfer(tb, data=0xFE, slaves=slaves)
+    # Start SPI transaction with data (see more in spi_write function)
+    spi_write(tb, data=0xFE, slaves=slaves)
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
 
@@ -136,7 +136,8 @@ async def spi_write_read(tb: SpiImpTB, log):
 
     tb.dut.spi_miso_i.value = 1
     
-    spi_transfer(tb, data=0x0, slaves=0x1)
+    # Start reading
+    spi_read(tb, slaves=0x1)
     # Probably schedule MISO driver
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
@@ -147,6 +148,8 @@ async def spi_write_read(tb: SpiImpTB, log):
     trans = [
         ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1),
         ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1),
+        # Read from RX data reg and output
+        ObiChATrans(addr=RX_DATA_REG_ADDR, we=False, be=0x1),
     ]
 
     print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
@@ -161,7 +164,7 @@ async def spi_flash_command(tb: SpiImpTB, log):
     # Ready backpressure driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
-    spi_transfer(tb, data=0x99, slaves=0x1)
+    spi_write(tb, data=0x99, slaves=0x1)
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
 
@@ -174,7 +177,36 @@ async def spi_flash_command(tb: SpiImpTB, log):
     print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
-def spi_transfer(tb, data, slaves):
+def spi_read(tb, slaves):
+    # Add reference to obi monitor for write acknowledge (write to SS reg = 1)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+
+    # Add reference to obi monitor for write acknowledge (write to ctrl reg to start SPI transaction)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+
+    # Add reference to spi monitor for data we send, which is 0 (we read)
+    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
+
+    # Add reference to obi monitor for write acknowledge (write 0 to CTRL reg to stop SPI transfer)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+
+    # Add reference to obi monitor for write acknowledge (write to SS reg = 0)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+
+    # Add reference to obi monitor for read operation (currently MISO is always 1, so 0xFF)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0xFF))
+
+    trans = [
+        # Write 0x1 to SS_REG so the first slave is selected
+        ObiChATrans(addr=SS_REG_ADDR, wdata=slaves, we=True, be=0x1),
+        # Write to ctrl reg to start SPI read transaction
+        ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x2, we=True, be=0x1),
+    ]
+
+    print(f"Scheduling obi write and start SPI transaction")
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
+
+def spi_write(tb, data, slaves):
     # Add reference to obi monitor for write acknowledge (write to ctrl reg to acknowledge SPI done transaction)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 

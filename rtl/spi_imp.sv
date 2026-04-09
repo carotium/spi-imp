@@ -169,6 +169,24 @@ module spi_imp #(
       ctrl_complete_bit <= 1'b1;
   end
 
+  always_ff @(posedge clk_i) begin
+    if (~rstn_i)
+      ctrl_start_reading_bit <= '0;
+    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartReadingBitMask))
+      ctrl_start_reading_bit <= 1'b1;
+    else if(spi_completed)
+      ctrl_start_reading_bit <= 1'b0;
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (~rstn_i)
+      ctrl_start_writing_bit <= '0;
+    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartWritingBitMask))
+      ctrl_start_writing_bit <= 1'b1;
+    else if(spi_completed)
+      ctrl_start_writing_bit <= 1'b0;
+  end
+
   assign control_reg_value = (
       ({31'b0, ctrl_start_writing_bit} << CtrlStartWritingBit)
     | ({31'b0, ctrl_start_reading_bit} << CtrlStartReadingBit)
@@ -250,13 +268,10 @@ module spi_imp #(
   
   assign complete_o = ctrl_complete_bit;
 
-  assign spi_started_writing = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartWritingBitMask);
-  assign spi_started_reading = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartReadingBitMask);
+  assign spi_started_reading = ctrl_start_reading_bit;
+  assign spi_started_writing = ctrl_start_writing_bit;
 
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
-
-  assign ctrl_start_reading_bit = (spi_state == eSPI_READING);
-  assign ctrl_start_writing_bit = (spi_state == eSPI_WRITING);
 
   // SPI FSM conditions for transitions
   always_comb begin
