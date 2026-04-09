@@ -271,9 +271,6 @@ module spi_imp #(
   assign spi_started_reading = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartReadingBitMask);
   assign spi_started_writing = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartWritingBitMask);
 
-  // assign spi_started_reading = ctrl_start_reading_bit;
-  // assign spi_started_writing = ctrl_start_writing_bit;
-
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
 
   // SPI FSM conditions for transitions
