@@ -209,7 +209,7 @@ def obi_transfer(tb, data):
         # Write data to data reg
         ObiChATrans(addr=TX_DATA_REG_ADDR, wdata=data, we=True, be=0x1),
         # Read data from data reg
-        ObiChATrans(addr=0x2, we=False, be=0x1),
+        ObiChATrans(addr=TX_DATA_REG_ADDR, we=False, be=0x1),
     ]
     #tb.dut.obi_rready_i.value = 1
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))

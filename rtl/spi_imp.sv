@@ -122,6 +122,8 @@ module spi_imp #(
 
   obi_state_t obi_state, obi_state_next;
 
+  logic [DATA_WIDTH-1 : 0] obi_read_value;
+
   /**************************************************************
   **********               CONTROL LOGIC               **********
   **************************************************************/
@@ -162,35 +164,22 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       ctrl_complete_bit <= 1'b0;
-    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_DONE)
+    else if(obi_a_fire && obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0])
       ctrl_complete_bit <= obi_awdata_i[CtrlCompleteBit];
-    else if(~obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0])
-      ctrl_complete_bit <= obi_rdata_o;
+    else if(spi_state == eSPI_DONE)
+      ctrl_complete_bit <= 1'b1;
   end
 
   assign control_reg_value = (
-      ({31'b0, ctrl_start_writing_bit} << CtrlStartWritingBitMask)
-    | ({31'b0, ctrl_start_reading_bit} << CtrlStartReadingBitMask)
-    | ({31'b0, ctrl_busy_bit} << CtrlBusyBitMask)
-    | ({31'b0, ctrl_tx_buffer_empty_bit} << CtrlTxBufferEmptyBitMask)
-    | ({31'b0, ctrl_rx_buffer_non_empty_bit} << CtrlRxBufferNonEmptyBitMask)
-    | ({31'b0, ctrl_complete_bit} << CtrlCompleteBitMask)
+      ({31'b0, ctrl_start_writing_bit} << CtrlStartWritingBit)
+    | ({31'b0, ctrl_start_reading_bit} << CtrlStartReadingBit)
+    | ({31'b0, ctrl_busy_bit} << CtrlBusyBit)
+    | ({31'b0, ctrl_tx_buffer_empty_bit} << CtrlTxBufferEmptyBit)
+    | ({31'b0, ctrl_rx_buffer_non_empty_bit} << CtrlRxBufferNonEmptyBit)
+    | ({31'b0, ctrl_complete_bit} << CtrlCompleteBit)
     | 32'b0
   );
 
-  // // Cotrol register assignment
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      CTRL_REG <= 6'b0;
-    else if (spi_started_reading || spi_started_writing)
-      CTRL_REG[2] <= 1'b1;
-    else if (spi_stopped_writing || spi_stopped_reading) begin
-      CTRL_REG[2] <= 1'b0;
-      CTRL_REG[5] <= 1'b1;
-    end else if (obi_a_fire && obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && ~CTRL_REG[2])
-      CTRL_REG <= obi_awdata_i[5:0];
-  end
-  
   /**************************************************************
   **********                    SPI                    **********
   **************************************************************/
@@ -260,12 +249,15 @@ module spi_imp #(
 
   assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : tx_data_reg[SPI_DATA_LENGTH - 1 - spi_data_index];
   
-  assign complete_o = CTRL_REG[5];
+  assign complete_o = ctrl_complete_bit;
 
   assign spi_started_writing = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartWritingBitMask);
   assign spi_started_reading = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && (obi_awdata_i & CtrlStartReadingBitMask);
 
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
+
+  assign ctrl_start_reading_bit = (spi_state == eSPI_READING);
+  assign ctrl_start_writing_bit = (spi_state == eSPI_WRITING);
 
   // SPI FSM conditions for transitions
   always_comb begin
@@ -297,6 +289,25 @@ module spi_imp #(
 
   assign obi_a_fire = obi_areq_i && obi_agnt_o;
 
+  always_ff @(posedge clk_i) begin
+    if (~rstn_i)
+      obi_rdata_o <= '0;
+    else if(~obi_awe_i)
+      obi_rdata_o <= obi_read_value;
+    else
+      obi_rdata_o <= '0;
+  end
+
+  always_comb begin
+    unique case (obi_aaddr_i)
+      TxDataRegAddr: obi_read_value = tx_data_reg;
+      RxDataRegAddr: obi_read_value = rx_data_reg;
+      SpiDivClkRegAddr: obi_read_value = spi_div_clk_reg;
+      SsRegAddr: obi_read_value = ss_reg;
+      CtrlRegAddr: obi_read_value = control_reg_value;
+    endcase
+  end
+
   /**************************************************************
   **********                  OBI FSM                  **********
   **************************************************************/
@@ -304,7 +315,6 @@ module spi_imp #(
   // Output assignment
   assign obi_agnt_o = (obi_state == eOBI_IDLE);
   assign obi_rvalid_o = (obi_state == eOBI_READING || obi_state == eOBI_WRITING);
-  assign obi_rdata_o = (obi_state == eOBI_READING) ? {24'b0, tx_data_reg} : 32'b0;
 
   // OBI FSM conditions for transitions
   always_comb begin
