@@ -159,8 +159,6 @@ async def spi_write_read(tb: SpiImpTB, log):
 async def spi_flash_command(tb: SpiImpTB, log):
     log.info("Send some commands to FLASH using SPI")
 
-    tb.dut.spi_miso_i.value = 1
-
     # Ready backpressure driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
