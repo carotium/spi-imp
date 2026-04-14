@@ -4,9 +4,7 @@ from cocotb.triggers import ClockCycles
 from forastero.driver import BaseDriver
 from forastero.monitor import BaseMonitor
 
-from spi.transaction import SpiTrans
-
-#import operator
+from spi.transaction import SpiTrans, SpiMisoTrans
 
 class SpiMonitor(BaseMonitor):
     async def monitor(self, capture):
@@ -47,3 +45,26 @@ class SpiMonitor(BaseMonitor):
                     data = spi_data
                 )
             )
+
+class SpiMisoDriver(BaseDriver):
+    async def drive(self, transaction: SpiMisoTrans):
+        index = 0
+        spi_data = transaction.data
+        sent = 0
+        while index <= 7:
+            while (self.rst == 0):
+                await RisingEdge(self.clk)
+
+            while (self.io.get("sclk") == 0 and sent == 0):
+                sent = 1
+                self.io.set("miso", ((spi_data>>index)%2))
+                await RisingEdge(self.clk)
+
+            if(self.io.get("sclk") and sent == 1):
+                #self.io.set("miso", ((spi_data>>index)%2))
+                #print(f'idx:{index}, misoexpected:{(spi_data>>index)%2}, misoreally:{self.io.get("miso")}')
+                index += 1
+                sent = 0
+
+            await RisingEdge(self.clk)
+

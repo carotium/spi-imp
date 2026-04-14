@@ -7,10 +7,11 @@ from base import get_test_runner, WAVES
 from obi.io import ObiChAIO, ObiChRIO
 from spi.io import SpiIO
 from obi.requestor import ObiChARequestDriver, ObiChRRequestMonitor, ObiChRReadyDriver
-from spi.requestor import SpiMonitor
-from obi.sequences import obi_channel_a_trans, obi_channel_r_trans
 from obi.transaction import ObiChATrans, ObiChRTrans
-from spi.transaction import SpiTrans
+from obi.sequences import obi_channel_a_trans, obi_channel_r_trans
+from spi.requestor import SpiMonitor, SpiMisoDriver
+from spi.transaction import SpiTrans, SpiMisoTrans
+from spi.sequences import spi_miso_trans
 
 import random
 
@@ -35,12 +36,14 @@ class SpiImpTB(BaseBench):
 
         self.register("spi_monitor", SpiMonitor(self, spi_io, self.clk, self.rst))
 
+        self.register("spi_miso_drv", SpiMisoDriver(self, spi_io, self.clk, self.rst))
+
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1)
 async def inbetween_send(tb: SpiImpTB, log):
     log.info(f"A single spi transfer and try to write to data reg during spi transfer")
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
-    spi_write(tb, 16, slaves=0x1)
+    spiWrite(tb, 16, slaves=0x1)
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
 
@@ -71,7 +74,7 @@ async def multiple_send(tb: SpiImpTB, log):
 
     for i in range(0, num_of_tran):
 
-        spi_write(tb, data=i, slaves=0x1)
+        spiWrite(tb, data=i, slaves=0x1)
 
         #await RisingEdge(tb.dut.spi_sclk_counter_en)
 
@@ -79,7 +82,7 @@ async def multiple_send(tb: SpiImpTB, log):
         print("Awaited ctrl_complete_bit")
 
         tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1)]))
-        await FallingEdge(tb.dut.complete_o)
+        await RisingEdge(tb.dut.obi_agnt_o)
         tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=[ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1)]))
         await RisingEdge(tb.dut.clk_i)
 
@@ -89,8 +92,8 @@ async def single_send(tb: SpiImpTB, log):
     slaves = 0x1
     # Schedule random ready driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
-    # Start SPI transaction with data (see more in spi_write function)
-    spi_write(tb, data=0xFE, slaves=slaves)
+    # Start SPI transaction with data (see more in spiWrite function)
+    spiWrite(tb, data=0xFE, slaves=slaves)
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
 
@@ -128,16 +131,18 @@ async def obi_write_read(tb: SpiImpTB, log):
     await RisingEdge(tb.dut.obi_awe_i)
     
 @SpiImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1,)
-async def spi_write_read(tb: SpiImpTB, log):
+async def spi_read(tb: SpiImpTB, log):
     log.info("Write and read on SPI")
+
+    spi_data_send = 0xAD
 
     # Ready backpressure driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
-    tb.dut.spi_miso_i.value = 1
+    # tb.dut.spi_miso_i.value = 1
     
     # Start reading
-    spi_read(tb, slaves=0x1)
+    spiRead(tb, slaves=0x1, spi_data_send=spi_data_send)
     # Probably schedule MISO driver
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
@@ -162,7 +167,7 @@ async def spi_flash_command(tb: SpiImpTB, log):
     # Ready backpressure driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
-    spi_write(tb, data=0x99, slaves=0x1)
+    spiWrite(tb, data=0x99, slaves=0x1)
 
     await RisingEdge(tb.dut.spi_sclk_counter_en)
 
@@ -175,7 +180,7 @@ async def spi_flash_command(tb: SpiImpTB, log):
     print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
-def spi_read(tb, slaves):
+def spiRead(tb, slaves, spi_data_send):
     # Add reference to obi monitor for write acknowledge (write to SS reg = 1)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
@@ -192,7 +197,10 @@ def spi_read(tb, slaves):
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
     # Add reference to obi monitor for read operation (currently MISO is always 1, so 0xFF)
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0xFF))
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=spi_data_send))
+
+    # Schedule SPI Miso Driver
+    tb.schedule(spi_miso_trans(spi_miso_drv=tb.spi_miso_drv, data=spi_data_send), blocking=False)
 
     trans = [
         # Write 0x1 to SS_REG so the first slave is selected
@@ -204,7 +212,7 @@ def spi_read(tb, slaves):
     print(f"Scheduling obi write and start SPI transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
-def spi_write(tb, data, slaves):
+def spiWrite(tb, data, slaves):
     # Add reference to obi monitor for write acknowledge (write to ctrl reg to acknowledge SPI done transaction)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
