@@ -1,9 +1,10 @@
 module spi_imp #(
-  parameter int unsigned ADDR_WIDTH = 32,
-  parameter int unsigned DATA_WIDTH = 32,
-  parameter int unsigned NUM_SLAVES = 4,
+  parameter int unsigned BASE_ADDR                = 0,
+  parameter int unsigned ADDR_WIDTH               = 32,
+  parameter int unsigned DATA_WIDTH               = 32,
+  parameter int unsigned NUM_SLAVES               = 4,
   parameter int unsigned SCLK_COUNTER_RESET_VALUE = 19,
-  parameter int unsigned SPI_DATA_LENGTH = 8
+  parameter int unsigned SPI_DATA_LENGTH          = 8
 ) (
   input logic clk_i,
   input logic rstn_i,
@@ -37,28 +38,31 @@ module spi_imp #(
   **********                 LOCALPARAM                **********
   **************************************************************/
 
-  // Register Addresses
-  localparam int TxDataRegAddr = 0;
-  localparam int RxDataRegAddr = 4;
-  localparam int SpiDivClkRegAddr = 8;
-  localparam int SsRegAddr = 12;
-  localparam int CtrlRegAddr = 16;
-
-  // Control Register Bit Masks
-  localparam int CtrlStartWritingBitMask = 1;
-  localparam int CtrlStartReadingBitMask = 2;
-  localparam int CtrlBusyBitMask = 4;
-  localparam int CtrlTxBufferEmptyBitMask = 8;
-  localparam int CtrlRxBufferNonEmptyBitMask = 16;
-  localparam int CtrlCompleteBitMask = 32;
+  // Register Address Offsets
+  localparam int TxDataRegAddrOffset        = 0;
+  localparam int RxDataRegAddrOffset        = 4;
+  localparam int SpiDivClkRegAddrOffset     = 8;
+  localparam int SsRegAddrOffset            = 12;
+  localparam int CtrlRegAddrOffset          = 16;
 
   // Control Register Bits
-  localparam int CtrlStartWritingBit       = 0;
-  localparam int CtrlStartReadingBit       = 1;
-  localparam int CtrlBusyBit                = 2;
-  localparam int CtrlTxBufferEmptyBit     = 3;
-  localparam int CtrlRxBufferNonEmptyBit = 4;
-  localparam int CtrlCompleteBit            = 5;
+  localparam int CtrlStartWritingBit         = 0;
+  localparam int CtrlStartReadingBit         = 1;
+  localparam int CtrlBusyBit                 = 2;
+  localparam int CtrlTxBufferEmptyBit        = 3;
+  localparam int CtrlRxBufferNonEmptyBit     = 4;
+  localparam int CtrlCompleteBit             = 5;
+
+  // Control Register Bit Masks
+  localparam int CtrlStartWritingBitMask     = 1 << CtrlStartWritingBit;
+  localparam int CtrlStartReadingBitMask     = 1 << CtrlStartReadingBit;
+  localparam int CtrlBusyBitMask             = 1 << CtrlBusyBit;
+  localparam int CtrlTxBufferEmptyBitMask    = 1 << CtrlTxBufferEmptyBit;
+  localparam int CtrlRxBufferNonEmptyBitMask = 1 << CtrlRxBufferNonEmptyBit;
+  localparam int CtrlCompleteBitMask         = 1 << CtrlCompleteBit;
+
+  // SPI Serial Clock Max Value
+  localparam int SclkMaxValue = SCLK_COUNTER_RESET_VALUE << 1;
 
   /**************************************************************
   **********                  TYPEDEF                  **********
@@ -91,7 +95,7 @@ module spi_imp #(
   ) tx_data_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_awe_i && obi_aaddr_i == TxDataRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .ce   (obi_awe_i && obi_aaddr_i == (BASE_ADDR + TxDataRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
     .in   (obi_awdata_i[SPI_DATA_LENGTH - 1:0]),
     .out  (tx_data_reg)
   );
@@ -118,7 +122,7 @@ module spi_imp #(
   ) spi_div_clk_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_awe_i && obi_aaddr_i == SpiDivClkRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .ce   (obi_awe_i && obi_aaddr_i == (BASE_ADDR + SpiDivClkRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
     .in   (obi_awdata_i),
     .out  (spi_div_clk_reg)
   );
@@ -130,7 +134,7 @@ module spi_imp #(
   ) ss_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_awe_i && obi_aaddr_i == SsRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .ce   (obi_awe_i && obi_aaddr_i == (BASE_ADDR + SsRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
     .in   (obi_awdata_i[NUM_SLAVES-1:0]),
     .out  (ss_reg)
   );
@@ -142,7 +146,7 @@ module spi_imp #(
         ctrl_rx_buffer_non_empty_bit, 
         ctrl_complete_bit;
 
-  logic [5:0] control_reg_value;
+  logic [5:0] ctrl_reg_value;
 
   /*  Control Register Bits
 
@@ -197,59 +201,45 @@ module spi_imp #(
   **********               CONTROL LOGIC               **********
   **************************************************************/
 
-  // TX data register
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     tx_data_reg <= '0;
-  //   else if (obi_awe_i && obi_aaddr_i == TxDataRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-  //     tx_data_reg <= obi_awdata_i[SPI_DATA_LENGTH - 1:0];
-  //   end
-
-  // SPI division clock register
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     spi_div_clk_reg <= SCLK_COUNTER_RESET_VALUE;
-  //   else if (obi_awe_i && obi_aaddr_i == SpiDivClkRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-  //     spi_div_clk_reg <= obi_awdata_i;
-  //   end
-
-  // Slave select register ss_reg
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     ss_reg <= '0;
-  //   else if(obi_awe_i && obi_aaddr_i == SsRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE)
-  //     ss_reg <= obi_awdata_i[NUM_SLAVES-1:0];
-  // end
-
   // Control complete bit
+
+  // register ctrl_complete_bit_inst (.clk  (clk_i), .rstn (rstn_i), .ce (bi_a_fire && obi_awe_i && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0]), .in((spi_state == eSPI_DONE) ? 1'b1 : obi_awdata_i[NUM_SLAVES-1:0]), .out(ctrl_complete_bit));
+
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       ctrl_complete_bit <= 1'b0;
-    else if(obi_a_fire && obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0])
+    else if(obi_a_fire && obi_awe_i && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0])
       ctrl_complete_bit <= obi_awdata_i[CtrlCompleteBit];
     else if(spi_state == eSPI_DONE)
       ctrl_complete_bit <= 1'b1;
   end
 
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      ctrl_start_reading_bit <= '0;
-    else if(spi_started_reading)
-      ctrl_start_reading_bit <= 1'b1;
-    else if(spi_completed)
-      ctrl_start_reading_bit <= 1'b0;
-  end
+  // Control Start Reading Bit
+  register ctrl_start_reading_bit_inst (.clk (clk_i), .rstn (rstn_i && ~spi_completed), .ce(spi_started_reading), .in(1'b1), .out(ctrl_start_reading_bit));
 
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      ctrl_start_writing_bit <= '0;
-    else if(spi_started_writing)
-      ctrl_start_writing_bit <= 1'b1;
-    else if(spi_completed)
-      ctrl_start_writing_bit <= 1'b0;
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     ctrl_start_reading_bit <= '0;
+  //   else if(spi_started_reading)
+  //     ctrl_start_reading_bit <= 1'b1;
+  //   else if(spi_completed)
+  //     ctrl_start_reading_bit <= 1'b0;
+  // end
 
-  assign control_reg_value = (
+  // Control Start Writing Bit
+  register ctrl_start_writing_bit_inst (.clk (clk_i), .rstn (rstn_i && ~spi_completed), .ce(spi_started_writing), .in(1'b1), .out(ctrl_start_writing_bit));
+
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     ctrl_start_writing_bit <= '0;
+  //   else if(spi_started_writing)
+  //     ctrl_start_writing_bit <= 1'b1;
+  //   else if(spi_completed)
+  //     ctrl_start_writing_bit <= 1'b0;
+  // end
+
+  // Control Register Value
+  assign ctrl_reg_value = (
       ({5'b0, ctrl_start_writing_bit} << CtrlStartWritingBit)
     | ({5'b0, ctrl_start_reading_bit} << CtrlStartReadingBit)
     | ({5'b0, ctrl_busy_bit} << CtrlBusyBit)
@@ -271,16 +261,6 @@ module spi_imp #(
       spi_sclk_prev <= spi_sclk_o;
   end
 
-  // Data index counter
-  // always_ff @(posedge clk_i) begin
-  //   if(~rstn_i)
-  //     spi_data_index <= 4'b0;
-  //   else if(spi_sclk_counter == 0 && ~spi_sclk_o && spi_sclk_prev)
-  //     spi_data_index++;
-  //   else if({28'b0, spi_data_index} == SPI_DATA_LENGTH)
-  //     spi_data_index <= 4'b0;
-  // end
-
   // SPI sclk
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
@@ -299,24 +279,6 @@ module spi_imp #(
       spi_sclk_count_twice <= ~spi_sclk_count_twice;
   end
 
-  //   SPI sclk counter
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     spi_sclk_counter <= 0;
-  //   else if(spi_sclk_counter < spi_div_clk_reg && spi_sclk_counter_en)
-  //     spi_sclk_counter++;
-  //   else if(spi_sclk_counter == spi_div_clk_reg)
-  //     spi_sclk_counter <= 0;
-  // end
-
-  // always_ff @(posedge clk_i) begin
-  //   if(~rstn_i)
-  //     rx_data_reg <= '0;
-  //   // On rising edge of SPI SCLK we gather data
-  //   else if(~spi_sclk_prev && spi_sclk_o)
-  //     rx_data_reg[spi_data_index] <= spi_miso_i;
-  // end
-
   /**************************************************************
   **********                  SPI FSM                  **********
   **************************************************************/
@@ -330,8 +292,8 @@ module spi_imp #(
   
   assign complete_o = ctrl_complete_bit;
 
-  assign spi_started_reading = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
-  assign spi_started_writing = obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
+  assign spi_started_reading = obi_awe_i && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
+  assign spi_started_writing = obi_awe_i && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
 
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
 
@@ -353,12 +315,14 @@ module spi_imp #(
   end
 
   // SPI FSM current state assignment
-  always_ff @(posedge clk_i) begin
-    if(~rstn_i)
-      spi_state <= eSPI_IDLE;
-    else
-      spi_state <= spi_state_next;
-  end
+  register #(.WORD_WIDTH(2), .RESET_VALUE(eSPI_IDLE)) spi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_state_next), .out(spi_state));
+
+  // always_ff @(posedge clk_i) begin
+  //   if(~rstn_i)
+  //     spi_state <= eSPI_IDLE;
+  //   else
+  //     spi_state <= spi_state_next;
+  // end
 
   /**************************************************************
   **********                    OBI                    **********
@@ -366,22 +330,25 @@ module spi_imp #(
 
   assign obi_a_fire = obi_areq_i && obi_agnt_o;
 
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      obi_rdata_o <= '0;
-    else if(~obi_awe_i)
-      obi_rdata_o <= obi_read_value;
-    else
-      obi_rdata_o <= '0;
-  end
+  // OBI Response Data Out Register
+  register #(.WORD_WIDTH(DATA_WIDTH)) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (~obi_awe_i && obi_a_fire)), .ce(~obi_awe_i && obi_a_fire), .in(obi_read_value), .out(obi_rdata_o));
+
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     obi_rdata_o <= '0;
+  //   else if(~obi_awe_i && obi_a_fire)
+  //     obi_rdata_o <= obi_read_value;
+  //   else
+  //     obi_rdata_o <= '0;
+  // end
 
   always_comb begin
     unique case (obi_aaddr_i)
-      TxDataRegAddr: obi_read_value = {24'b0, tx_data_reg};
-      RxDataRegAddr: obi_read_value = {24'b0, rx_data_reg};
-      SpiDivClkRegAddr: obi_read_value = spi_div_clk_reg;
-      SsRegAddr: obi_read_value = {28'b0, ss_reg};
-      CtrlRegAddr: obi_read_value = {26'b0, control_reg_value};
+      (BASE_ADDR + TxDataRegAddrOffset): obi_read_value = {24'b0, tx_data_reg};
+      (BASE_ADDR + RxDataRegAddrOffset): obi_read_value = {24'b0, rx_data_reg};
+      (BASE_ADDR + SpiDivClkRegAddrOffset): obi_read_value = spi_div_clk_reg;
+      (BASE_ADDR + SsRegAddrOffset): obi_read_value = {28'b0, ss_reg};
+      (BASE_ADDR + CtrlRegAddrOffset): obi_read_value = {26'b0, ctrl_reg_value};
     endcase
   end
 
