@@ -19,16 +19,16 @@ module spi_imp #(
   input   logic [DATA_WIDTH/8-1:0]  obi_abe_i,     // Byte Enable - is set for the bytes to read/write
 
   //  R channel
-  output  logic                     obi_rvalid_o, // Read Valid - response transfer request
-  input   logic                     obi_rready_i, // Read ready - master is ready to accept response transfer
-  output  logic [DATA_WIDTH-1:0]    obi_rdata_o,  // Read Data - only valid for read transactions
-  output  logic                     obi_rerr_o,
+  output  logic                     obi_rvalid_o, // Response Valid - response transfer request
+  input   logic                     obi_rready_i, // Response ready - master is ready to accept response transfer
+  output  logic [DATA_WIDTH-1:0]    obi_rdata_o,  // Response Data - only valid for read transactions
+  output  logic                     obi_rerr_o,   // Response Error - TODO
 
   // SPI master
-  output  logic [NUM_SLAVES-1 : 0]  spi_ss_o,
-  output  logic                     spi_sclk_o,
-  output  logic                     spi_mosi_o,
-  input   logic                     spi_miso_i,
+  output  logic [NUM_SLAVES-1 : 0]  spi_ss_o,     // SPI slave select
+  output  logic                     spi_sclk_o,   // SPI serial clock
+  output  logic                     spi_mosi_o,   // SPI MOSI - Mater Out Slave In
+  input   logic                     spi_miso_i,   // SPI MISO - Master In Slave Out
 
   // Output complete
   output  logic                     complete_o
@@ -37,12 +37,14 @@ module spi_imp #(
   **********                 LOCALPARAM                **********
   **************************************************************/
 
+  // Register Addresses
   localparam int TxDataRegAddr = 0;
   localparam int RxDataRegAddr = 4;
   localparam int SpiDivClkRegAddr = 8;
   localparam int SsRegAddr = 12;
   localparam int CtrlRegAddr = 16;
 
+  // Control Register Bit Masks
   localparam int CtrlStartWritingBitMask = 1;
   localparam int CtrlStartReadingBitMask = 2;
   localparam int CtrlBusyBitMask = 4;
@@ -50,6 +52,7 @@ module spi_imp #(
   localparam int CtrlRxBufferNonEmptyBitMask = 16;
   localparam int CtrlCompleteBitMask = 32;
 
+  // Control Register Bits
   localparam int CtrlStartWritingBit       = 0;
   localparam int CtrlStartReadingBit       = 1;
   localparam int CtrlBusyBit                = 2;
@@ -61,14 +64,15 @@ module spi_imp #(
   **********                  TYPEDEF                  **********
   **************************************************************/
 
-  // three states: sending, done, idle
+  // SPI states
   typedef enum {
-    eSPI_IDLE,     // Waiting for instructions
-    eSPI_WRITING,  // Sending an SPI transaction
-    eSPI_READING,
-    eSPI_DONE      // Done sending an SPI transaction
+    eSPI_IDLE,      // Waiting for instructions
+    eSPI_WRITING,   // Sending an SPI transaction
+    eSPI_READING,   // Reading an SPI transaction
+    eSPI_DONE       // Done sending an SPI transaction
     } spi_state_t;
 
+  // OBI states
   typedef enum {
     eOBI_IDLE,       // Waiting for instructions
     eOBI_READING,    // OBI read transfer
@@ -140,7 +144,8 @@ module spi_imp #(
 
   logic [5:0] control_reg_value;
 
-  /*
+  /*  Control Register Bits
+
   0 bit: Start Write - start sending on SPI
   1 bit: Start Read - start reading from SPI
   2 bit: Busy - currently sending or reading on SPI
@@ -229,7 +234,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       ctrl_start_reading_bit <= '0;
-    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartReadingBitMask) > '0))
+    else if(spi_started_reading)
       ctrl_start_reading_bit <= 1'b1;
     else if(spi_completed)
       ctrl_start_reading_bit <= 1'b0;
@@ -238,7 +243,7 @@ module spi_imp #(
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
       ctrl_start_writing_bit <= '0;
-    else if(obi_awe_i && obi_aaddr_i == CtrlRegAddr && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartWritingBitMask) > '0))
+    else if(spi_started_writing)
       ctrl_start_writing_bit <= 1'b1;
     else if(spi_completed)
       ctrl_start_writing_bit <= 1'b0;
