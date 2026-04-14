@@ -3,7 +3,7 @@ module spi_imp #(
   parameter int unsigned ADDR_WIDTH               = 32,
   parameter int unsigned DATA_WIDTH               = 32,
   parameter int unsigned NUM_SLAVES               = 4,
-  parameter int unsigned SCLK_COUNTER_RESET_VALUE = 19,
+  parameter int unsigned SCLK_COUNTER_RESET_VALUE = 0,
   parameter int unsigned SPI_DATA_LENGTH          = 8
 ) (
   input logic clk_i,
@@ -39,11 +39,11 @@ module spi_imp #(
   **************************************************************/
 
   // Register Address Offsets
-  localparam int TxDataRegAddrOffset        = 0;
-  localparam int RxDataRegAddrOffset        = 4;
-  localparam int SpiDivClkRegAddrOffset     = 8;
-  localparam int SsRegAddrOffset            = 12;
-  localparam int CtrlRegAddrOffset          = 16;
+  localparam int TxDataRegAddrOffset        = BASE_ADDR + 0;
+  localparam int RxDataRegAddrOffset        = BASE_ADDR + 4;
+  localparam int SpiDivClkRegAddrOffset     = BASE_ADDR + 8;
+  localparam int SsRegAddrOffset            = BASE_ADDR + 12;
+  localparam int CtrlRegAddrOffset          = BASE_ADDR + 16;
 
   // Control Register Bits
   localparam int CtrlStartWritingBit         = 0;
@@ -137,7 +137,6 @@ module spi_imp #(
 
   logic [DATA_WIDTH-1:0] spi_sclk_counter;
 
-  logic spi_sclk_count_twice;
   logic spi_sclk_prev;
   logic spi_sclk_counter_en;
 
@@ -152,11 +151,11 @@ module spi_imp #(
   // Control Complete Bit
   register ctrl_complete_bit_inst (.clk(clk_i), .rstn(rstn_i), .ce(ctrl_complete_bit_write), .in(ctrl_complete_bit_next), .out(ctrl_complete_bit));
 
-  assign ctrl_complete_bit_write = (obi_a_write && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0]) || spi_state == eSPI_DONE;
+  assign ctrl_complete_bit_write = (obi_a_write && obi_aaddr_i == CtrlRegAddrOffset && obi_abe_i[0]) || spi_state == eSPI_DONE;
 
   always_comb begin
     ctrl_complete_bit_next = ctrl_complete_bit;
-    if(obi_a_write && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0])
+    if(obi_a_write && obi_aaddr_i == CtrlRegAddrOffset && obi_abe_i[0])
       ctrl_complete_bit_next = obi_awdata_i[CtrlCompleteBit];
     else if(spi_state == eSPI_DONE)
       ctrl_complete_bit_next = '1;
@@ -184,13 +183,13 @@ module spi_imp #(
   **************************************************************/
 
   // Receive Data Register
-  register #(
+  shift_register #(
     .WORD_WIDTH(SPI_DATA_LENGTH)
   ) rx_data_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
     .ce   (~spi_sclk_prev && spi_sclk_o && ctrl_start_reading_bit),
-    .in   (({7'b0, spi_miso_i} << spi_data_index) | rx_data_reg),
+    .in   (spi_miso_i),
     .out  (rx_data_reg)
   );
 
@@ -217,15 +216,7 @@ module spi_imp #(
   // Previous SPI serial clock
   register spi_sclk_prev_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_sclk_o), .out(spi_sclk_prev));
   // SPI Serial Clock
-  register spi_sclk_o_inst (.clk(clk_i), .rstn(rstn_i && spi_ss_o < '1), .ce(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice), .in(~spi_sclk_o), .out(spi_sclk_o));
-
-  // SPI sclk count number to 2
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      spi_sclk_count_twice <= 1'b0;
-    else if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_counter_en)
-      spi_sclk_count_twice <= ~spi_sclk_count_twice;
-  end
+  register spi_sclk_o_inst (.clk(clk_i), .rstn(rstn_i && spi_ss_o < '1), .ce(spi_sclk_counter == spi_div_clk_reg), .in(~spi_sclk_o), .out(spi_sclk_o));
 
   /**************************************************************
   **********                  SPI FSM                  **********
@@ -236,12 +227,12 @@ module spi_imp #(
   
   assign spi_ss_o = ~(ss_reg);
 
-  assign spi_mosi_o = (spi_state == eSPI_IDLE) ? 1'b0 : tx_data_reg[SPI_DATA_LENGTH - 1 - {28'b0, spi_data_index}];
+  assign spi_mosi_o = (spi_state == eSPI_IDLE || spi_data_index == SPI_DATA_LENGTH || spi_state == eSPI_DONE) ? 1'b0 : tx_data_reg[SPI_DATA_LENGTH - 1 - {28'b0, spi_data_index}];
   
   assign complete_o = ctrl_complete_bit;
 
-  assign spi_started_reading = obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
-  assign spi_started_writing = obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
+  assign spi_started_reading = obi_a_write_valid && obi_aaddr_i == CtrlRegAddrOffset && obi_abe_i[0] && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
+  assign spi_started_writing = obi_a_write_valid && obi_aaddr_i == CtrlRegAddrOffset && obi_abe_i[0] && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
 
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
 
@@ -284,7 +275,7 @@ module spi_imp #(
   ) tx_data_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + TxDataRegAddrOffset) && obi_abe_i[0]),
+    .ce   (obi_a_write_valid && obi_aaddr_i == TxDataRegAddrOffset && obi_abe_i[0]),
     .in   (obi_awdata_i[SPI_DATA_LENGTH - 1:0]),
     .out  (tx_data_reg)
   );
@@ -296,7 +287,7 @@ module spi_imp #(
   ) spi_div_clk_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + SpiDivClkRegAddrOffset) && obi_abe_i[0]),
+    .ce   (obi_a_write_valid && obi_aaddr_i == SpiDivClkRegAddrOffset && obi_abe_i[0]),
     .in   (obi_awdata_i),
     .out  (spi_div_clk_reg)
   );
@@ -307,7 +298,7 @@ module spi_imp #(
   ) ss_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + SsRegAddrOffset) && obi_abe_i[0]),
+    .ce   (obi_a_write_valid && obi_aaddr_i == SsRegAddrOffset && obi_abe_i[0]),
     .in   (obi_awdata_i[NUM_SLAVES-1:0]),
     .out  (ss_reg)
   );
@@ -317,11 +308,11 @@ module spi_imp #(
 
   always_comb begin
     unique case (obi_aaddr_i)
-      (BASE_ADDR + TxDataRegAddrOffset): obi_read_value = {24'b0, tx_data_reg};
-      (BASE_ADDR + RxDataRegAddrOffset): obi_read_value = {24'b0, rx_data_reg};
-      (BASE_ADDR + SpiDivClkRegAddrOffset): obi_read_value = spi_div_clk_reg;
-      (BASE_ADDR + SsRegAddrOffset): obi_read_value = {28'b0, ss_reg};
-      (BASE_ADDR + CtrlRegAddrOffset): obi_read_value = {26'b0, ctrl_reg_value};
+      TxDataRegAddrOffset: obi_read_value = {24'b0, tx_data_reg};
+      RxDataRegAddrOffset: obi_read_value = {24'b0, rx_data_reg};
+      SpiDivClkRegAddrOffset: obi_read_value = spi_div_clk_reg;
+      SsRegAddrOffset: obi_read_value = {28'b0, ss_reg};
+      CtrlRegAddrOffset: obi_read_value = {26'b0, ctrl_reg_value};
     endcase
   end
 
