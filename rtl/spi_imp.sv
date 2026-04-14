@@ -87,6 +87,8 @@ module spi_imp #(
   **********                DEFINITIONS                **********
   **************************************************************/
 
+  logic obi_io_valid;
+
   // TX data register
   logic [SPI_DATA_LENGTH-1:0] tx_data_reg;
 
@@ -95,7 +97,7 @@ module spi_imp #(
   ) tx_data_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_awe_i && obi_aaddr_i == (BASE_ADDR + TxDataRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .ce   (obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + TxDataRegAddrOffset) && obi_abe_i[0]),
     .in   (obi_awdata_i[SPI_DATA_LENGTH - 1:0]),
     .out  (tx_data_reg)
   );
@@ -122,7 +124,7 @@ module spi_imp #(
   ) spi_div_clk_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_awe_i && obi_aaddr_i == (BASE_ADDR + SpiDivClkRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .ce   (obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + SpiDivClkRegAddrOffset) && obi_abe_i[0]),
     .in   (obi_awdata_i),
     .out  (spi_div_clk_reg)
   );
@@ -134,7 +136,7 @@ module spi_imp #(
   ) ss_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_awe_i && obi_aaddr_i == (BASE_ADDR + SsRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE),
+    .ce   (obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + SsRegAddrOffset) && obi_abe_i[0]),
     .in   (obi_awdata_i[NUM_SLAVES-1:0]),
     .out  (ss_reg)
   );
@@ -160,6 +162,8 @@ module spi_imp #(
   */
 
   logic obi_a_fire;
+  logic obi_a_write, obi_a_read;
+  logic obi_a_write_accept;
   
   logic [3:0] spi_data_index;
 
@@ -203,40 +207,25 @@ module spi_imp #(
 
   // Control complete bit
 
-  // register ctrl_complete_bit_inst (.clk  (clk_i), .rstn (rstn_i), .ce (bi_a_fire && obi_awe_i && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0]), .in((spi_state == eSPI_DONE) ? 1'b1 : obi_awdata_i[NUM_SLAVES-1:0]), .out(ctrl_complete_bit));
+   register ctrl_complete_bit_inst (.clk  (clk_i), .rstn(rstn_i), .ce(ctrl_complete_bit_write), .in(ctrl_complete_bit_next), .out(ctrl_complete_bit));
 
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      ctrl_complete_bit <= 1'b0;
-    else if(obi_a_fire && obi_awe_i && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0])
-      ctrl_complete_bit <= obi_awdata_i[CtrlCompleteBit];
+  logic ctrl_complete_bit_next, ctrl_complete_bit_write;
+
+  assign ctrl_complete_bit_write = (obi_a_write && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0]) || spi_state == eSPI_DONE;
+
+  always_comb begin
+    ctrl_complete_bit_next = ctrl_complete_bit;
+    if(obi_a_write && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0])
+      ctrl_complete_bit_next = obi_awdata_i[CtrlCompleteBit];
     else if(spi_state == eSPI_DONE)
-      ctrl_complete_bit <= 1'b1;
+      ctrl_complete_bit_next = '1;
   end
 
   // Control Start Reading Bit
   register ctrl_start_reading_bit_inst (.clk (clk_i), .rstn (rstn_i && ~spi_completed), .ce(spi_started_reading), .in(1'b1), .out(ctrl_start_reading_bit));
 
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     ctrl_start_reading_bit <= '0;
-  //   else if(spi_started_reading)
-  //     ctrl_start_reading_bit <= 1'b1;
-  //   else if(spi_completed)
-  //     ctrl_start_reading_bit <= 1'b0;
-  // end
-
   // Control Start Writing Bit
   register ctrl_start_writing_bit_inst (.clk (clk_i), .rstn (rstn_i && ~spi_completed), .ce(spi_started_writing), .in(1'b1), .out(ctrl_start_writing_bit));
-
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     ctrl_start_writing_bit <= '0;
-  //   else if(spi_started_writing)
-  //     ctrl_start_writing_bit <= 1'b1;
-  //   else if(spi_completed)
-  //     ctrl_start_writing_bit <= 1'b0;
-  // end
 
   // Control Register Value
   assign ctrl_reg_value = (
@@ -292,55 +281,44 @@ module spi_imp #(
   
   assign complete_o = ctrl_complete_bit;
 
-  assign spi_started_reading = obi_awe_i && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
-  assign spi_started_writing = obi_awe_i && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
+  assign spi_started_reading = obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
+  assign spi_started_writing = obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
 
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
 
   // SPI FSM conditions for transitions
   always_comb begin
-
     spi_stopped_writing =   spi_state == eSPI_WRITING  && {28'b0, spi_data_index} == SPI_DATA_LENGTH;
     spi_stopped_reading = spi_state == eSPI_READING && {28'b0, spi_data_index} == SPI_DATA_LENGTH;
     spi_completed = spi_state == eSPI_DONE && ~ctrl_complete_bit;
-
   end
 
   // SPI FSM transitions
   always_comb begin
-    spi_state_next = spi_started_writing                        ? eSPI_WRITING : spi_state;
-    spi_state_next = spi_started_reading                        ? eSPI_READING : spi_state_next;
-    spi_state_next = spi_stopped_writing || spi_stopped_reading ? eSPI_DONE :    spi_state_next;
-    spi_state_next = spi_completed                              ? eSPI_IDLE :    spi_state_next;
+    spi_state_next = spi_started_writing                          ? eSPI_WRITING : spi_state;
+    spi_state_next = spi_started_reading                          ? eSPI_READING : spi_state_next;
+    spi_state_next = (spi_stopped_writing || spi_stopped_reading) ? eSPI_DONE :    spi_state_next;
+    spi_state_next = spi_completed                                ? eSPI_IDLE :    spi_state_next;
   end
 
   // SPI FSM current state assignment
   register #(.WORD_WIDTH(2), .RESET_VALUE(eSPI_IDLE)) spi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_state_next), .out(spi_state));
 
-  // always_ff @(posedge clk_i) begin
-  //   if(~rstn_i)
-  //     spi_state <= eSPI_IDLE;
-  //   else
-  //     spi_state <= spi_state_next;
-  // end
-
   /**************************************************************
   **********                    OBI                    **********
   **************************************************************/
 
+  assign obi_rerr_o = 1'b0;
+
   assign obi_a_fire = obi_areq_i && obi_agnt_o;
 
-  // OBI Response Data Out Register
-  register #(.WORD_WIDTH(DATA_WIDTH)) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (~obi_awe_i && obi_a_fire)), .ce(~obi_awe_i && obi_a_fire), .in(obi_read_value), .out(obi_rdata_o));
+  assign obi_a_write = obi_a_fire && obi_awe_i;
+  assign obi_a_read = obi_a_fire && ~obi_awe_i;
 
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     obi_rdata_o <= '0;
-  //   else if(~obi_awe_i && obi_a_fire)
-  //     obi_rdata_o <= obi_read_value;
-  //   else
-  //     obi_rdata_o <= '0;
-  // end
+  assign obi_a_write_accept = obi_a_write && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE;
+
+  // OBI Response Data Out Register
+  register #(.WORD_WIDTH(DATA_WIDTH)) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (obi_a_read)), .ce(obi_a_read), .in(obi_read_value), .out(obi_rdata_o));
 
   always_comb begin
     unique case (obi_aaddr_i)
@@ -362,9 +340,9 @@ module spi_imp #(
 
   // OBI FSM conditions for transitions
   always_comb begin
-    obi_started_reading = obi_state == eOBI_IDLE && obi_areq_i && obi_agnt_o && ~obi_awe_i;
-    obi_started_writing = obi_state == eOBI_IDLE && obi_areq_i && obi_agnt_o && obi_awe_i;
-    obi_done            = (obi_state == eOBI_READING || obi_state == eOBI_WRITING) && obi_rvalid_o && obi_rready_i;
+    obi_started_reading = obi_state == eOBI_IDLE && obi_a_read;
+    obi_started_writing = obi_state == eOBI_IDLE && obi_a_write;
+    obi_done            = obi_rvalid_o && obi_rready_i;
   end
 
   // OBI FSM transitions
@@ -375,16 +353,10 @@ module spi_imp #(
   end
 
   // OBI FSM current state assignment
-  always_ff @(posedge clk_i) begin
-    if(~rstn_i)
-      obi_state <= eOBI_IDLE;
-    else
-      obi_state <= obi_state_next;
-  end
+  register #(.WORD_WIDTH(2), .RESET_VALUE(eOBI_IDLE)) obi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(obi_state_next), .out(obi_state));
 
  /**************************************************************
  **********                   MISC                    **********
  **************************************************************/
-assign obi_rerr_o = 1'b0;
 
 endmodule

@@ -100,6 +100,11 @@ async def single_send(tb: SpiImpTB, log):
     # Wait for SPI transaction to complete
     await RisingEdge(tb.dut.complete_o)
 
+    await RisingEdge(tb.dut.clk_i)
+    await RisingEdge(tb.dut.clk_i)
+    await RisingEdge(tb.dut.clk_i)
+    await RisingEdge(tb.dut.clk_i)
+
     trans = [
         ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1),
         ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1),
