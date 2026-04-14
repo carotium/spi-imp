@@ -11,25 +11,25 @@ module spi_imp #(
 
   // OBI interface
   //  A channel
-  input   logic                     obi_areq_i,    // Request - address transfer request
-  output  logic                     obi_agnt_o,    // Grant - ready to accept address transfer
-  input   logic [ADDR_WIDTH-1:0]    obi_aaddr_i,   // Address
-  input   logic [DATA_WIDTH-1:0]    obi_awdata_i,  // Write Data - only valid for write transaction
+  input   logic                     obi_areq_i,
+  output  logic                     obi_agnt_o,
+  input   logic [ADDR_WIDTH-1:0]    obi_aaddr_i,
+  input   logic [DATA_WIDTH-1:0]    obi_awdata_i,
 
-  input   logic                     obi_awe_i,     // Write Enable - high write, low read
-  input   logic [DATA_WIDTH/8-1:0]  obi_abe_i,     // Byte Enable - is set for the bytes to read/write
+  input   logic                     obi_awe_i,
+  input   logic [DATA_WIDTH/8-1:0]  obi_abe_i,
 
   //  R channel
-  output  logic                     obi_rvalid_o, // Response Valid - response transfer request
-  input   logic                     obi_rready_i, // Response ready - master is ready to accept response transfer
-  output  logic [DATA_WIDTH-1:0]    obi_rdata_o,  // Response Data - only valid for read transactions
+  output  logic                     obi_rvalid_o,
+  input   logic                     obi_rready_i,
+  output  logic [DATA_WIDTH-1:0]    obi_rdata_o,
   output  logic                     obi_rerr_o,   // Response Error - TODO
 
   // SPI master
-  output  logic [NUM_SLAVES-1 : 0]  spi_ss_o,     // SPI slave select
-  output  logic                     spi_sclk_o,   // SPI serial clock
-  output  logic                     spi_mosi_o,   // SPI MOSI - Mater Out Slave In
-  input   logic                     spi_miso_i,   // SPI MISO - Master In Slave Out
+  output  logic [NUM_SLAVES-1 : 0]  spi_ss_o,
+  output  logic                     spi_sclk_o,
+  output  logic                     spi_mosi_o,
+  input   logic                     spi_miso_i,
 
   // Output complete
   output  logic                     complete_o
@@ -69,7 +69,7 @@ module spi_imp #(
   **************************************************************/
 
   // SPI states
-  typedef enum {
+  typedef enum reg [1:0] {
     eSPI_IDLE,      // Waiting for instructions
     eSPI_WRITING,   // Sending an SPI transaction
     eSPI_READING,   // Reading an SPI transaction
@@ -77,7 +77,7 @@ module spi_imp #(
     } spi_state_t;
 
   // OBI states
-  typedef enum {
+  typedef enum reg [1:0] {
     eOBI_IDLE,       // Waiting for instructions
     eOBI_READING,    // OBI read transfer
     eOBI_WRITING     // OBI write transfer
@@ -90,54 +90,14 @@ module spi_imp #(
   // TX data register
   logic [SPI_DATA_LENGTH-1:0] tx_data_reg;
 
-  register #(
-    .WORD_WIDTH(SPI_DATA_LENGTH)
-  ) tx_data_reg_inst (
-    .clk  (clk_i),
-    .rstn (rstn_i),
-    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + TxDataRegAddrOffset) && obi_abe_i[0]),
-    .in   (obi_awdata_i[SPI_DATA_LENGTH - 1:0]),
-    .out  (tx_data_reg)
-  );
-
   // RX data register
   logic [SPI_DATA_LENGTH-1:0] rx_data_reg;
-
-  register #(
-    .WORD_WIDTH(SPI_DATA_LENGTH)
-  ) rx_data_reg_inst (
-    .clk  (clk_i),
-    .rstn (rstn_i),
-    .ce   (~spi_sclk_prev && spi_sclk_o && ctrl_start_reading_bit),
-    .in   (({7'b0, spi_miso_i} << spi_data_index) | rx_data_reg),
-    .out  (rx_data_reg)
-  );
 
   // SPI Division clock register
   logic [DATA_WIDTH-1 : 0] spi_div_clk_reg;
 
-  register #(
-    .WORD_WIDTH(DATA_WIDTH),
-    .RESET_VALUE(SCLK_COUNTER_RESET_VALUE)
-  ) spi_div_clk_reg_inst (
-    .clk  (clk_i),
-    .rstn (rstn_i),
-    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + SpiDivClkRegAddrOffset) && obi_abe_i[0]),
-    .in   (obi_awdata_i),
-    .out  (spi_div_clk_reg)
-  );
-
+  // SS Register
   logic [NUM_SLAVES-1 : 0] ss_reg;
-
-  register #(
-    .WORD_WIDTH(NUM_SLAVES)
-  ) ss_reg_inst (
-    .clk  (clk_i),
-    .rstn (rstn_i),
-    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + SsRegAddrOffset) && obi_abe_i[0]),
-    .in   (obi_awdata_i[NUM_SLAVES-1:0]),
-    .out  (ss_reg)
-  );
 
   // Control Register Bits
   //  0 bit: Start Write - start sending on SPI
@@ -153,33 +113,29 @@ module spi_imp #(
   //  5 bit: Complete (TX or RX) - "Writable" - sets after SPI transaction completes, waits for clear from CPU - IRQ for CPU
   logic ctrl_complete_bit;
 
+  logic ctrl_complete_bit_next, ctrl_complete_bit_write;
+
+  // Control Register Register Value
   logic [5:0] ctrl_reg_value;
 
+  // OBI
+  //  Obi Address Channel Accepted Transaction
   logic obi_a_fire;
+  //  Obi Address Channel Write/Read Accepted Transaction
   logic obi_a_write, obi_a_read;
+  //  Obi Address Channel Valid Write Transaction
   logic obi_a_write_valid;
-  
+
+  logic obi_started_reading, obi_started_writing, obi_done;
+
+  obi_state_t obi_state, obi_state_next;
+
+  logic [DATA_WIDTH-1 : 0] obi_read_value;
+
+  // SPI
   logic [3:0] spi_data_index;
 
-  counter #(
-    .WORD_WIDTH(4)
-  ) spi_data_index_inst (
-      .clk (clk_i),
-      .rstn(rstn_i && ~({28'b0, spi_data_index} == SPI_DATA_LENGTH)),
-      .ce  (spi_sclk_counter == 0 && ~spi_sclk_o && spi_sclk_prev),
-      .count (spi_data_index)
-  );
-
   logic [DATA_WIDTH-1:0] spi_sclk_counter;
-
-  counter #(
-    .WORD_WIDTH(DATA_WIDTH)
-  ) spi_sclk_counter_inst (
-      .clk (clk_i),
-      .rstn(rstn_i && ~(spi_sclk_counter == spi_div_clk_reg) && spi_sclk_counter_en),
-      .ce  ((spi_sclk_counter < spi_div_clk_reg) && spi_sclk_counter_en),
-      .count (spi_sclk_counter)
-  );
 
   logic spi_sclk_count_twice;
   logic spi_sclk_prev;
@@ -189,20 +145,12 @@ module spi_imp #(
 
   spi_state_t spi_state, spi_state_next;
 
-  logic obi_started_reading, obi_started_writing, obi_done;
-
-  obi_state_t obi_state, obi_state_next;
-
-  logic [DATA_WIDTH-1 : 0] obi_read_value;
-
   /**************************************************************
   **********               CONTROL LOGIC               **********
   **************************************************************/
 
   // Control Complete Bit
   register ctrl_complete_bit_inst (.clk(clk_i), .rstn(rstn_i), .ce(ctrl_complete_bit_write), .in(ctrl_complete_bit_next), .out(ctrl_complete_bit));
-
-  logic ctrl_complete_bit_next, ctrl_complete_bit_write;
 
   assign ctrl_complete_bit_write = (obi_a_write && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0]) || spi_state == eSPI_DONE;
 
@@ -235,23 +183,61 @@ module spi_imp #(
   **********                    SPI                    **********
   **************************************************************/
 
+  // Receive Data Register
+  register #(
+    .WORD_WIDTH(SPI_DATA_LENGTH)
+  ) rx_data_reg_inst (
+    .clk  (clk_i),
+    .rstn (rstn_i),
+    .ce   (~spi_sclk_prev && spi_sclk_o && ctrl_start_reading_bit),
+    .in   (({7'b0, spi_miso_i} << spi_data_index) | rx_data_reg),
+    .out  (rx_data_reg)
+  );
+
+  // SPI Data Counter
+  counter #(
+    .WORD_WIDTH(4)
+  ) spi_data_index_inst (
+      .clk (clk_i),
+      .rstn(rstn_i && ~({28'b0, spi_data_index} == SPI_DATA_LENGTH)),
+      .ce  (spi_sclk_counter == 0 && ~spi_sclk_o && spi_sclk_prev),
+      .count (spi_data_index)
+  );
+
+  // SPI Serial Clock Counter
+  counter #(
+    .WORD_WIDTH(DATA_WIDTH)
+  ) spi_sclk_counter_inst (
+      .clk (clk_i),
+      .rstn(rstn_i && ~(spi_sclk_counter == spi_div_clk_reg) && spi_sclk_counter_en),
+      .ce  ((spi_sclk_counter < spi_div_clk_reg) && spi_sclk_counter_en),
+      .count (spi_sclk_counter)
+  );
+
   // Previous SPI serial clock
-  always_ff @(posedge clk_i) begin
-    if(~rstn_i)
-      spi_sclk_prev <= 1'b0;
-    else
-      spi_sclk_prev <= spi_sclk_o;
-  end
+  register spi_sclk_prev_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_sclk_o), .out(spi_sclk_prev));
+
+  // logic spi_sclk_next;
+
+  register spi_sclk_o_inst (.clk(clk_i), .rstn(rstn_i && spi_ss_o < '1), .ce(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice), .in(~spi_sclk_o), .out(spi_sclk_o));
+
+  // always_comb begin
+  //   spi_sclk_next = spi_sclk_o;
+  //   if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice)
+  //     spi_sclk_next = ~spi_sclk_o;
+  //   else if(spi_ss_o == '1)
+  //     spi_sclk_next = 1'b0;
+  // end
 
   // SPI sclk
-  always_ff @(posedge clk_i) begin
-    if (~rstn_i)
-      spi_sclk_o <= 1'b0;
-    else if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice)
-      spi_sclk_o <= ~spi_sclk_o;
-    else if(spi_ss_o == '1)
-      spi_sclk_o <= 1'b0;
-  end
+  // always_ff @(posedge clk_i) begin
+  //   if (~rstn_i)
+  //     spi_sclk_o <= 1'b0;
+  //   else if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice)
+  //     spi_sclk_o <= ~spi_sclk_o;
+  //   else if(spi_ss_o == '1)
+  //     spi_sclk_o <= 1'b0;
+  // end
 
   // SPI sclk count number to 2
   always_ff @(posedge clk_i) begin
@@ -311,6 +297,40 @@ module spi_imp #(
   assign obi_a_read = obi_a_fire && ~obi_awe_i;
   // Obi Address Channel Valid Write Transaction
   assign obi_a_write_valid = obi_a_write && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE;
+
+  // Transfer Data Register
+  register #(
+    .WORD_WIDTH(SPI_DATA_LENGTH)
+  ) tx_data_reg_inst (
+    .clk  (clk_i),
+    .rstn (rstn_i),
+    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + TxDataRegAddrOffset) && obi_abe_i[0]),
+    .in   (obi_awdata_i[SPI_DATA_LENGTH - 1:0]),
+    .out  (tx_data_reg)
+  );
+
+  // SPI Clock Divisor Register
+  register #(
+    .WORD_WIDTH(DATA_WIDTH),
+    .RESET_VALUE(SCLK_COUNTER_RESET_VALUE)
+  ) spi_div_clk_reg_inst (
+    .clk  (clk_i),
+    .rstn (rstn_i),
+    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + SpiDivClkRegAddrOffset) && obi_abe_i[0]),
+    .in   (obi_awdata_i),
+    .out  (spi_div_clk_reg)
+  );
+
+  // Slave Select Register
+  register #(
+    .WORD_WIDTH(NUM_SLAVES)
+  ) ss_reg_inst (
+    .clk  (clk_i),
+    .rstn (rstn_i),
+    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + SsRegAddrOffset) && obi_abe_i[0]),
+    .in   (obi_awdata_i[NUM_SLAVES-1:0]),
+    .out  (ss_reg)
+  );
 
   // OBI Response Data Out Register
   register #(.WORD_WIDTH(DATA_WIDTH)) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (obi_a_read)), .ce(obi_a_read), .in(obi_read_value), .out(obi_rdata_o));
