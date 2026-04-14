@@ -216,9 +216,7 @@ module spi_imp #(
 
   // Previous SPI serial clock
   register spi_sclk_prev_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_sclk_o), .out(spi_sclk_prev));
-
-  // logic spi_sclk_next;
-
+  // SPI Serial Clock
   register spi_sclk_o_inst (.clk(clk_i), .rstn(rstn_i && spi_ss_o < '1), .ce(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice), .in(~spi_sclk_o), .out(spi_sclk_o));
 
   // SPI sclk count number to 2
