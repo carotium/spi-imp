@@ -87,8 +87,6 @@ module spi_imp #(
   **********                DEFINITIONS                **********
   **************************************************************/
 
-  logic obi_io_valid;
-
   // TX data register
   logic [SPI_DATA_LENGTH-1:0] tx_data_reg;
 
@@ -97,7 +95,7 @@ module spi_imp #(
   ) tx_data_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + TxDataRegAddrOffset) && obi_abe_i[0]),
+    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + TxDataRegAddrOffset) && obi_abe_i[0]),
     .in   (obi_awdata_i[SPI_DATA_LENGTH - 1:0]),
     .out  (tx_data_reg)
   );
@@ -124,7 +122,7 @@ module spi_imp #(
   ) spi_div_clk_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + SpiDivClkRegAddrOffset) && obi_abe_i[0]),
+    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + SpiDivClkRegAddrOffset) && obi_abe_i[0]),
     .in   (obi_awdata_i),
     .out  (spi_div_clk_reg)
   );
@@ -136,34 +134,30 @@ module spi_imp #(
   ) ss_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
-    .ce   (obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + SsRegAddrOffset) && obi_abe_i[0]),
+    .ce   (obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + SsRegAddrOffset) && obi_abe_i[0]),
     .in   (obi_awdata_i[NUM_SLAVES-1:0]),
     .out  (ss_reg)
   );
 
-  logic ctrl_start_writing_bit, 
-        ctrl_start_reading_bit, 
-        ctrl_busy_bit, 
-        ctrl_tx_buffer_empty_bit, 
-        ctrl_rx_buffer_non_empty_bit, 
-        ctrl_complete_bit;
+  // Control Register Bits
+  //  0 bit: Start Write - start sending on SPI
+  logic ctrl_start_writing_bit;
+  //  1 bit: Start Read - start reading from SPI
+  logic ctrl_start_reading_bit; 
+  //  2 bit: Busy - currently sending or reading on SPI
+  logic ctrl_busy_bit;
+  //  3 bit: TX buffer empty - clears on OBI write to TX register
+  logic ctrl_tx_buffer_empty_bit;
+  //  4 bit: RX buffer non-empty - clears on OBI read from RX register
+  logic ctrl_rx_buffer_non_empty_bit;
+  //  5 bit: Complete (TX or RX) - "Writable" - sets after SPI transaction completes, waits for clear from CPU - IRQ for CPU
+  logic ctrl_complete_bit;
 
   logic [5:0] ctrl_reg_value;
 
-  /*  Control Register Bits
-
-  0 bit: Start Write - start sending on SPI
-  1 bit: Start Read - start reading from SPI
-  2 bit: Busy - currently sending or reading on SPI
-  3 bit: TX buffer empty - clears on OBI write to TX register
-  4 bit: RX buffer non-empty - clears on OBI read from RX register
-  5 bit: Complete (TX or RX) - "Writable" - sets after SPI transaction completes, waits for clear from CPU
-    - IRQ for CPU
-  */
-
   logic obi_a_fire;
   logic obi_a_write, obi_a_read;
-  logic obi_a_write_accept;
+  logic obi_a_write_valid;
   
   logic [3:0] spi_data_index;
 
@@ -205,9 +199,8 @@ module spi_imp #(
   **********               CONTROL LOGIC               **********
   **************************************************************/
 
-  // Control complete bit
-
-   register ctrl_complete_bit_inst (.clk  (clk_i), .rstn(rstn_i), .ce(ctrl_complete_bit_write), .in(ctrl_complete_bit_next), .out(ctrl_complete_bit));
+  // Control Complete Bit
+  register ctrl_complete_bit_inst (.clk(clk_i), .rstn(rstn_i), .ce(ctrl_complete_bit_write), .in(ctrl_complete_bit_next), .out(ctrl_complete_bit));
 
   logic ctrl_complete_bit_next, ctrl_complete_bit_write;
 
@@ -281,8 +274,8 @@ module spi_imp #(
   
   assign complete_o = ctrl_complete_bit;
 
-  assign spi_started_reading = obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
-  assign spi_started_writing = obi_a_write_accept && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
+  assign spi_started_reading = obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && ((obi_awdata_i & CtrlStartReadingBitMask) > '0);
+  assign spi_started_writing = obi_a_write_valid && obi_aaddr_i == (BASE_ADDR + CtrlRegAddrOffset) && obi_abe_i[0] && ((obi_awdata_i & CtrlStartWritingBitMask) > '0);
 
   assign ctrl_busy_bit = (spi_state == eSPI_READING || spi_state == eSPI_WRITING);
 
@@ -308,14 +301,16 @@ module spi_imp #(
   **********                    OBI                    **********
   **************************************************************/
 
+  // Obi Response Error Output
   assign obi_rerr_o = 1'b0;
-
+  // Obi Address Channel Accepted Transaction
   assign obi_a_fire = obi_areq_i && obi_agnt_o;
-
+  // Obi Address Channel Accepted Write Transaction
   assign obi_a_write = obi_a_fire && obi_awe_i;
+  // Obi Address Channel Accepted Read Transaction
   assign obi_a_read = obi_a_fire && ~obi_awe_i;
-
-  assign obi_a_write_accept = obi_a_write && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE;
+  // Obi Address Channel Valid Write Transaction
+  assign obi_a_write_valid = obi_a_write && spi_state == eSPI_IDLE && obi_state == eOBI_IDLE;
 
   // OBI Response Data Out Register
   register #(.WORD_WIDTH(DATA_WIDTH)) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (obi_a_read)), .ce(obi_a_read), .in(obi_read_value), .out(obi_rdata_o));
