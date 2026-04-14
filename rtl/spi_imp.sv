@@ -221,24 +221,6 @@ module spi_imp #(
 
   register spi_sclk_o_inst (.clk(clk_i), .rstn(rstn_i && spi_ss_o < '1), .ce(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice), .in(~spi_sclk_o), .out(spi_sclk_o));
 
-  // always_comb begin
-  //   spi_sclk_next = spi_sclk_o;
-  //   if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice)
-  //     spi_sclk_next = ~spi_sclk_o;
-  //   else if(spi_ss_o == '1)
-  //     spi_sclk_next = 1'b0;
-  // end
-
-  // SPI sclk
-  // always_ff @(posedge clk_i) begin
-  //   if (~rstn_i)
-  //     spi_sclk_o <= 1'b0;
-  //   else if(spi_sclk_counter == spi_div_clk_reg && spi_sclk_count_twice)
-  //     spi_sclk_o <= ~spi_sclk_o;
-  //   else if(spi_ss_o == '1)
-  //     spi_sclk_o <= 1'b0;
-  // end
-
   // SPI sclk count number to 2
   always_ff @(posedge clk_i) begin
     if (~rstn_i)
