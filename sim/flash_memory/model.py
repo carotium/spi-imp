@@ -31,6 +31,10 @@ class FlashMemoryModel:
     def write(self, address: int, data: int) -> None:
         self._memory[address] = data
 
+    def read_id(self, tb, req_mon: FlashMemoryRequestMonitor, rsp_drv: FlashMemoryResponseDriver) -> None:
+        tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=READ_ID))
+
+
     def read(self, address: int) -> int:
         if address not in self._memory:
             self._memory[address] = self._random.getrandbits(8)

@@ -34,14 +34,11 @@ class FlashImpTB(BaseBench):
         obi_a_io = ObiChAIO(dut, "obi", IORole.RESPONDER, io_style=io_suffix_style)
         obi_r_io = ObiChRIO(dut, "obi", IORole.RESPONDER, io_style=io_suffix_style)
 
-        flash_req_io = FlashMemoryIO(dut, "spi", IORole.INITIATOR, io_style=io_suffix_style)
-        flash_rsp_io = FlashMemoryIO(dut, "spi", IORole.INITIATOR, io_style=io_suffix_style)
+        flash_io = FlashMemoryIO(dut, "spi", IORole.INITIATOR, io_style=io_suffix_style)
 
-        #self.register("flash_req_drv", FlashMemoryRequestDriver(self, flash_req_io, self.clk, self.rst))
-        self.register("flash_rsp_drv", FlashMemoryResponseDriver(self, flash_rsp_io, self.clk, self.rst))
+        self.register("flash_rsp_drv", FlashMemoryResponseDriver(self, flash_io, self.clk, self.rst))
 
-        self.register("flash_req_monitor", FlashMemoryRequestMonitor(self, flash_req_io, self.clk, self.rst))
-        #self.register("flash_rsp_monitor", FlashMemoryResponseMonitor(self, flash_rsp_io, self.clk, self.rst))
+        self.register("flash_req_monitor", FlashMemoryRequestMonitor(self, flash_io, self.clk, self.rst))
 
         self.register("obi_a_drv", ObiChARequestDriver(self, obi_a_io, self.clk, self.rst))
 
@@ -59,30 +56,53 @@ class FlashImpTB(BaseBench):
 @FlashImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=1000, shutdown_delay=1, shutdown_loops=1)
 async def flash_cmd(tb: FlashImpTB, log):
     log.info(f"Send single flash CMD over SPI")
-    slaves = 0x1
+
     # Schedule random ready driver
     tb.schedule(obi_channel_r_trans(obi_r_drv=tb.obi_r_drv), blocking=False)
 
-    # Start SPI transaction with data (see more in spiWrite function)
-    spiWrite(tb, data=0x27, slaves=slaves, spi_div=0x10)
+    spi_div = 0x10
+    ss = 0x1
+    data = 0x9E
 
-    await RisingEdge(tb.dut.spi_sclk_counter_en)
+    # Set SPI clock divisor
+    obiWrite(tb, addr=SPI_DIV_CLK_REG_ADDR, data=spi_div)
+    await RisingEdge(tb.dut.obi_rvalid_o)
+
+    # Set transfer data
+    obiWrite(tb, addr=TX_DATA_REG_ADDR, data=data)
+    await RisingEdge(tb.dut.obi_rvalid_o)
+
+    # Set slaves
+    obiWrite(tb, addr=SS_REG_ADDR, data=ss)
+    await RisingEdge(tb.dut.obi_rvalid_o)
+
+    # Start SPI write transaction
+    obiWrite(tb, addr=CTRL_REG_ADDR, data=0x1)
+    await RisingEdge(tb.dut.obi_rvalid_o)
+
+    
+    tb.flash_mem.read_id(tb, tb.flash_req_monitor, tb.flash_rsp_drv)
 
     # Wait for SPI transaction to complete
     await RisingEdge(tb.dut.complete_o)
 
     await RisingEdge(tb.dut.clk_i)
-    await RisingEdge(tb.dut.clk_i)
-    await RisingEdge(tb.dut.clk_i)
-    await RisingEdge(tb.dut.clk_i)
+
+    # Acknowledge SPI done, clear done bit
+    obiWrite(tb=tb, addr=CTRL_REG_ADDR, data=0x0)
+    # Unselect slave
+    obiWrite(tb=tb, addr=SS_REG_ADDR, data=0x0)
+
+
+def obiWrite(tb, addr, data):
+    # Add reference to obi monitor for write acknowledge (write to addr with data)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
 
     trans = [
-        ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x0, we=True, be=0x1),
-        ObiChATrans(addr=SS_REG_ADDR, wdata=0x0, we=True, be=0x1),
+        ObiChATrans(addr=addr, wdata=data, we=True, be=0x1)
     ]
-    print("Scheduling write to ctrl reg to acknowledge SPI done transaction")
-    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 def spiWrite(tb, data, slaves, spi_div):
     # Add reference to obi monitor for write acknowledge (write to ctrl reg to acknowledge SPI done transaction)
@@ -94,7 +114,7 @@ def spiWrite(tb, data, slaves, spi_div):
     # Add reference to spi monitor for data we want to send
     #tb.scoreboard.channels["flash_rsp_monitor"].push_reference(FlashMemoryResponse(data=data))
 
-    tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=data))
+    # tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=data))
 
     # Add reference to obi monitor for write acknowledge (write data to data reg)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
@@ -119,9 +139,11 @@ def spiWrite(tb, data, slaves, spi_div):
     print(f"Scheduling obi write and start SPI transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
-def test_spi_runner():
+    # tb.flash_mem.read_id(tb, tb.flash_req_monitor, tb.flash_rsp_drv)
+
+def test_flash_runner():
     runner = get_test_runner("spi_imp")
     runner.test(hdl_toplevel="spi_imp", test_module="test_flash", waves=WAVES)
 
 if __name__ == "__main__":
-    test_spi_runner()
+    test_flash_runner()
