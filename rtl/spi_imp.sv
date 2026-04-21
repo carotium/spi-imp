@@ -304,7 +304,7 @@ module spi_imp #(
   );
 
   // OBI Response Data Out Register
-  register #(.WORD_WIDTH(DATA_WIDTH)) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (obi_a_read)), .ce(obi_a_read), .in(obi_read_value), .out(obi_rdata_o));
+  register #(.WORD_WIDTH(DATA_WIDTH)) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (obi_a_read || ~obi_done)), .ce(obi_a_read), .in(obi_read_value), .out(obi_rdata_o));
 
   always_comb begin
     unique case (obi_aaddr_i)
