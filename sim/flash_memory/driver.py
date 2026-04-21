@@ -2,9 +2,10 @@ from cocotb.triggers import RisingEdge
 from forastero import BaseDriver
 
 from .transaction import FlashMemoryResponse
+from spi.transaction import SpiTrans
 
 class FlashMemoryResponseDriver(BaseDriver):
-    async def drive(self, obj: FlashMemoryResponse) -> None:
+    async def drive(self, obj: SpiTrans) -> None:
         bytes = obj.bytes
         index = bytes*8 - 1
         spi_data = obj.data

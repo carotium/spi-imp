@@ -39,11 +39,8 @@ class FlashMemoryModel:
                  component: SpiMonitor,
                  event: MonitorEvent,
                  transaction: SpiTrans) -> None:
-        print(f'In service!')
         assert component is self._request
         assert event is MonitorEvent.CAPTURE
-        print(f'cmd:{transaction.data}')
-        print(f'queue:{self._response.queued}')
         if transaction.data == READ_ID:
-            self._response.enqueue(SpiTrans(data=0x20))
-        print(f'queue:{self._response.queued}')
+            transaction.bytes = 2
+            self._response.enqueue(SpiTrans(data=0x20BA, bytes=transaction.bytes))

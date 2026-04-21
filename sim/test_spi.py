@@ -10,7 +10,7 @@ from obi.requestor import ObiChARequestDriver, ObiChRRequestMonitor, ObiChRReady
 from obi.transaction import ObiChATrans, ObiChRTrans
 from obi.sequences import obi_channel_a_trans, obi_channel_r_trans
 from spi.requestor import SpiMonitor, SpiMisoDriver
-from spi.transaction import SpiTrans, SpiMisoTrans
+from spi.transaction import SpiTrans
 from spi.sequences import spi_miso_trans
 
 import random

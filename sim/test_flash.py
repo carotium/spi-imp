@@ -77,39 +77,49 @@ async def flash_cmd(tb: FlashImpTB, log):
     # Wait for SPI transaction to complete
     await RisingEdge(tb.dut.complete_o)
 
-    await RisingEdge(tb.dut.clk_i)
-
     # Acknowledge SPI done, clear done bit
     obiWrite(tb=tb, addr=CTRL_REG_ADDR, data=0x0)
-
-    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=cmd))
-    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
-
-    while (tb.flash_mem._response.busy):
-        await RisingEdge(tb.dut.clk_i)
-    print(f'busy:{tb.flash_mem._response.busy}')
-
-    # Start SPI read transaction
-    print(f'Starting SPI Read transaction!')
-    obiWrite(tb, addr=CTRL_REG_ADDR, data=0x2)
-
     await RisingEdge(tb.dut.obi_rvalid_o)
 
+# START
+    # Reference for sent command to Flash
+    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=cmd, bytes=2))
+    # Reference for outgoing data on MOSI to be 0x0, because we are receiving on MISO
+    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
+
+    # Start SPI read transaction
+    obiWrite(tb, addr=CTRL_REG_ADDR, data=0x2)
     await RisingEdge(tb.dut.complete_o)
 
-    await RisingEdge(tb.dut.clk_i)
-
-    print(f'Acknowledging SPI done')
     # Acknowledge SPI done, clear done bit
     obiWrite(tb=tb, addr=CTRL_REG_ADDR, data=0x0)
+    await RisingEdge(tb.dut.obi_rvalid_o)
 
-    print(f'Unselecting slave')
+     # Read from RX data register
+    obiRead(tb=tb, addr=RX_DATA_REG_ADDR)
+    await RisingEdge(tb.dut.obi_rvalid_o)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x20))
+
+    #await RisingEdge(tb.dut.obi_rvalid_o)
+
+    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
+
+    # Start SPI read transaction (2nd byte)
+    obiWrite(tb, addr=CTRL_REG_ADDR, data=0x2)
+    await RisingEdge(tb.dut.obi_rvalid_o)
+    await RisingEdge(tb.dut.complete_o)
+
+    obiWrite(tb=tb, addr=CTRL_REG_ADDR, data=0x0)
+
+    obiRead(tb=tb, addr=RX_DATA_REG_ADDR)
+    await RisingEdge(tb.dut.obi_rvalid_o)
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0xBA))
+
     # Unselect slave
     obiWrite(tb=tb, addr=SS_REG_ADDR, data=0x0)
     await RisingEdge(tb.dut.obi_rvalid_o)
-    obiRead(tb=tb, addr=RX_DATA_REG_ADDR)
 
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x20))
+   
 
 def obiRead(tb, addr):
     trans = [
@@ -126,36 +136,6 @@ def obiWrite(tb, addr, data):
         ObiChATrans(addr=addr, wdata=data, we=True, be=0x1)
     ]
 
-    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
-
-def spiWrite(tb, data, slaves, spi_div):
-    # Add reference to obi monitor for write acknowledge (write to ctrl reg to acknowledge SPI done transaction)
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
-
-    # Add reference to obi monitor for write acknowledge (write to SS reg = 1)
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
-
-    # Add reference to obi monitor for write acknowledge (write data to data reg)
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
-    # Add reference to obi monitor for write acknowledge (write to ctrl reg to start SPI transaction)
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
-    # Add reference to obi monitor for write acknowledge (write to SS reg = 0)
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
-    # Add reference to obi monitor for write acknowledge (write to SPI_DIV_CLK_REG)
-    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
-
-    trans = [
-        # Set SPI Clock Division Register
-        ObiChATrans(addr=SPI_DIV_CLK_REG_ADDR, wdata=spi_div, we=True, be=0x1),
-        # Write 0x1 to SS_REG so the first slave is selected
-        ObiChATrans(addr=SS_REG_ADDR, wdata=slaves, we=True, be=0x1),
-        # Some data we want to send to write to data reg
-        ObiChATrans(addr=TX_DATA_REG_ADDR, wdata=data, we=True, be=0x1),
-        # Write to ctrl reg to start SPI transaction
-        ObiChATrans(addr=CTRL_REG_ADDR, wdata=0x1, we=True, be=0x1),
-    ]
-
-    print(f"Scheduling obi write and start SPI transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 def test_flash_runner():

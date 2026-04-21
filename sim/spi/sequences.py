@@ -8,7 +8,7 @@ from forastero.driver import DriverEvent
 from forastero.monitor import MonitorEvent
 from forastero.sequence import SeqContext, SeqProxy
 
-from .transaction import SpiMisoTrans
+from .transaction import SpiTrans
 from .requestor import SpiMisoDriver
 
 @forastero.sequence(auto_lock=True)
@@ -20,7 +20,7 @@ async def spi_miso_trans(
 ) -> None:
     while True:
         await spi_miso_drv.enqueue(
-            SpiMisoTrans(
+            SpiTrans(
                 data = data,
             ),
             wait_for=DriverEvent.POST_DRIVE
