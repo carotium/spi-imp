@@ -13,16 +13,13 @@ from obi.requestor import ObiChARequestDriver, ObiChRRequestMonitor, ObiChRReady
 from obi.transaction import ObiChATrans, ObiChRTrans
 from obi.sequences import obi_channel_a_trans, obi_channel_r_trans
 
-from flash_memory.io import FlashMemoryIO
+from spi.io import SpiIO
 
-from flash_memory.driver import FlashMemoryRequestDriver, FlashMemoryResponseDriver
-from flash_memory.monitor import FlashMemoryRequestMonitor, FlashMemoryResponseMonitor
+from spi.requestor import SpiMisoDriver, SpiMonitor
 
-from flash_memory.transaction import FlashMemoryRequest, FlashMemoryResponse
+from spi.transaction import SpiTrans
 
 from flash_memory.model import FlashMemoryModel
-
-from flash_memory.sequences import flash_rsp_trans
 
 TX_DATA_REG_ADDR = 0
 RX_DATA_REG_ADDR = 4
@@ -36,11 +33,11 @@ class FlashImpTB(BaseBench):
         obi_a_io = ObiChAIO(dut, "obi", IORole.RESPONDER, io_style=io_suffix_style)
         obi_r_io = ObiChRIO(dut, "obi", IORole.RESPONDER, io_style=io_suffix_style)
 
-        flash_io = FlashMemoryIO(dut, "spi", IORole.INITIATOR, io_style=io_suffix_style)
+        spi_io = SpiIO(dut, "spi", IORole.INITIATOR, io_style=io_suffix_style)
+        
+        self.register("spi_monitor", SpiMonitor(self, spi_io, self.clk, self.rst))
 
-        self.register("flash_rsp_drv", FlashMemoryResponseDriver(self, flash_io, self.clk, self.rst))
-
-        self.register("flash_req_monitor", FlashMemoryRequestMonitor(self, flash_io, self.clk, self.rst))
+        self.register("spi_miso_drv", SpiMisoDriver(self, spi_io, self.clk, self.rst))
 
         self.register("obi_a_drv", ObiChARequestDriver(self, obi_a_io, self.clk, self.rst))
 
@@ -49,7 +46,7 @@ class FlashImpTB(BaseBench):
         self.register("obi_r_drv", ObiChRReadyDriver(self, obi_r_io, self.clk, self.rst))
 
         # Flash Memory
-        self.flash_mem = FlashMemoryModel(self.flash_req_monitor, self.flash_rsp_drv, Random(self.random.random()))
+        self.flash_mem = FlashMemoryModel(self.spi_monitor, self.spi_miso_drv, Random(self.random.random()))
 
     async def initialise(self) -> None:
         await super().initialise()
@@ -64,34 +61,18 @@ async def flash_cmd(tb: FlashImpTB, log):
 
     spi_div = 0x10
     ss = 0x1
-    data = 0x9E
+    cmd = 0x9E
 
     config = [
-        (SPI_DIV_CLK_REG_ADDR, spi_div),
-        (TX_DATA_REG_ADDR, data),
-        (SS_REG_ADDR, ss),
-        (CTRL_REG_ADDR, 0x1),
+        (SPI_DIV_CLK_REG_ADDR, spi_div),    # Set SPI clock divisor
+        (TX_DATA_REG_ADDR, cmd),           # Set transfer data
+        (SS_REG_ADDR, ss),                  # Set slaves
+        (CTRL_REG_ADDR, 0x1),               # Start SPI write transaction
     ]
 
     for (address, data) in config:
         obiWrite(tb=tb, addr=address, data=data)
         await RisingEdge(tb.dut.obi_rvalid_o)
-
-    # Set SPI clock divisor
-    # obiWrite(tb, addr=SPI_DIV_CLK_REG_ADDR, data=spi_div)
-    # await RisingEdge(tb.dut.obi_rvalid_o)
-
-    # Set transfer data
-    # obiWrite(tb, addr=TX_DATA_REG_ADDR, data=data)
-    # await RisingEdge(tb.dut.obi_rvalid_o)
-
-    # Set slaves
-    # obiWrite(tb, addr=SS_REG_ADDR, data=ss)
-    # await RisingEdge(tb.dut.obi_rvalid_o)
-
-    # Start SPI write transaction
-    # obiWrite(tb, addr=CTRL_REG_ADDR, data=0x1)
-    # await RisingEdge(tb.dut.obi_rvalid_o)
 
     # Wait for SPI transaction to complete
     await RisingEdge(tb.dut.complete_o)
@@ -101,21 +82,20 @@ async def flash_cmd(tb: FlashImpTB, log):
     # Acknowledge SPI done, clear done bit
     obiWrite(tb=tb, addr=CTRL_REG_ADDR, data=0x0)
 
-    #tb.schedule(flash_rsp_trans(flash_rsp_drv=tb.flash_rsp_drv, trans=[FlashMemoryResponse(data=data)]), blocking=False)
-    tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=data))
+    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=cmd))
+    tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
+
+    while (tb.flash_mem._response.busy):
+        await RisingEdge(tb.dut.clk_i)
+    print(f'busy:{tb.flash_mem._response.busy}')
 
     # Start SPI read transaction
     print(f'Starting SPI Read transaction!')
     obiWrite(tb, addr=CTRL_REG_ADDR, data=0x2)
-    
+
     await RisingEdge(tb.dut.obi_rvalid_o)
 
-    #await tb.flash_mem._response.wait_for(DriverEvent.PRE_DRIVE)
-    #await tb.flash_rsp_drv.wait_for(DriverEvent.POST_DRIVE)
-
     await RisingEdge(tb.dut.complete_o)
-
-    tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=0x20))
 
     await RisingEdge(tb.dut.clk_i)
 
@@ -126,7 +106,17 @@ async def flash_cmd(tb: FlashImpTB, log):
     print(f'Unselecting slave')
     # Unselect slave
     obiWrite(tb=tb, addr=SS_REG_ADDR, data=0x0)
+    await RisingEdge(tb.dut.obi_rvalid_o)
+    obiRead(tb=tb, addr=RX_DATA_REG_ADDR)
 
+    tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x20))
+
+def obiRead(tb, addr):
+    trans = [
+        ObiChATrans(addr=addr, wdata=addr, we=False, be=0x1)
+    ]
+
+    tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 def obiWrite(tb, addr, data):
     # Add reference to obi monitor for write acknowledge (write to addr with data)
@@ -144,11 +134,6 @@ def spiWrite(tb, data, slaves, spi_div):
 
     # Add reference to obi monitor for write acknowledge (write to SS reg = 1)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
-
-    # Add reference to spi monitor for data we want to send
-    #tb.scoreboard.channels["flash_rsp_monitor"].push_reference(FlashMemoryResponse(data=data))
-
-    # tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=data))
 
     # Add reference to obi monitor for write acknowledge (write data to data reg)
     tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
@@ -172,8 +157,6 @@ def spiWrite(tb, data, slaves, spi_div):
 
     print(f"Scheduling obi write and start SPI transaction")
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
-
-    # tb.flash_mem.read_id(tb, tb.flash_req_monitor, tb.flash_rsp_drv)
 
 def test_flash_runner():
     runner = get_test_runner("spi_imp")
