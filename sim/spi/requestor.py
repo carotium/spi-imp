@@ -7,44 +7,18 @@ from forastero.monitor import BaseMonitor
 from spi.transaction import SpiTrans, SpiMisoTrans
 
 class SpiMonitor(BaseMonitor):
-    async def monitor(self, capture):
-        index = 7
-        spi_data = 0
-        captured = 0
+    async def monitor(self, capture) -> None:
         while True:
-            # wait for reset to deassert
-            await RisingEdge(self.clk)
-            if(self.rst.value == 0):
-                index = 7
-                spi_data = 0
-                captured = 0
+            spi_command = 0
+            while((self.rst.value == 0) or (self.io.get("ss") == 0xF)):
                 await RisingEdge(self.clk)
 
-            while(self.io.get("ss") == 0xF):
-                index = 7
-                spi_data = 0
-                captured = 0
-                await RisingEdge(self.clk)
+            for index in reversed(range(8)):
+                await RisingEdge(self.io.dut.spi_sclk_o)
+                spi_command += (int(self.io.get("mosi")) << index)
+                assert self.io.get("ss") != 0xF, "ERROR: SS raised during transaction."
 
-            while(self.io.get("ss") < 0xF and index >= 0):
-                if(self.io.get("sclk") and captured == 0):
-                    spi_data += (int(self.io.get("mosi")) << index)
-                    print(f'mosi={index}){self.io.get("mosi")}\n')
-                    captured = 1
-                    index -= 1
-                elif(self.io.get("sclk") == False):
-                    captured = 0
-                
-                await RisingEdge(self.clk)
-
-            while(self.io.get("ss") < 0xF):
-                await RisingEdge(self.clk)
-
-            capture(
-                SpiTrans(
-                    data = spi_data
-                )
-            )
+            capture(SpiTrans(data=spi_command))
 
 class SpiMisoDriver(BaseDriver):
     async def drive(self, transaction: SpiMisoTrans):
