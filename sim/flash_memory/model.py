@@ -1,18 +1,17 @@
 from random import Random
 
 #from cocotb.log import SimLog
-from forastero import MonitorEvent
+from forastero import MonitorEvent, DriverEvent
 
-from .driver import FlashMemoryResponseDriver
-from .monitor import FlashMemoryRequestMonitor
-from .transaction import FlashMemoryRequest, FlashMemoryResponse
+from spi.requestor import SpiMisoDriver, SpiMonitor
+from spi.transaction import SpiTrans
 
 READ_ID = 0x9E
 
 class FlashMemoryModel:
     def __init__(self,
-                 request: FlashMemoryRequestMonitor,
-                 response: FlashMemoryResponseDriver,
+                 request: SpiMonitor,
+                 response: SpiMisoDriver,
                  random: Random) -> None:
         
         # References
@@ -37,12 +36,14 @@ class FlashMemoryModel:
         return self._memory[address]
     
     def _service(self,
-                 component: FlashMemoryRequestMonitor,
+                 component: SpiMonitor,
                  event: MonitorEvent,
-                 transaction: FlashMemoryRequest) -> None:
+                 transaction: SpiTrans) -> None:
         print(f'In service!')
         assert component is self._request
         assert event is MonitorEvent.CAPTURE
-        print(f'cmd:{transaction.cmd}')
-        if transaction.cmd == READ_ID:
-            self._response.enqueue(FlashMemoryResponse(data=0x20))
+        print(f'cmd:{transaction.data}')
+        print(f'queue:{self._response.queued}')
+        if transaction.data == READ_ID:
+            self._response.enqueue(SpiTrans(data=0x20))
+        print(f'queue:{self._response.queued}')
