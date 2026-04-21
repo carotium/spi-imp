@@ -25,7 +25,7 @@ class FlashMemoryRequestMonitor(BaseMonitor):
             while(self.io.get("ss") < 0xF and index >= 0):
                 if(self.io.get("sclk") and captured == 0):
                     spi_command += (int(self.io.get("mosi")) << index)
-                    print(f'mosi={index}){self.io.get("mosi")}\n')
+                    #print(f'mosi={index}){self.io.get("mosi")}\n')
                     captured = 1
                     index -= 1
                 elif(self.io.get("sclk") == False):
@@ -35,10 +35,6 @@ class FlashMemoryRequestMonitor(BaseMonitor):
 
             while(self.io.get("ss") < 0xF):
                 await RisingEdge(self.clk)
-
-            # READ ID command, then outputs flash data specific to flash device - 0x20BA1910...
-            if(spi_command == READ_ID):
-                data_output = 0x20BA1910
 
             capture(FlashMemoryRequest(cmd=spi_command))
 
@@ -64,7 +60,7 @@ class FlashMemoryResponseMonitor(BaseMonitor):
             while(self.io.get("ss") < 0xF and index >= 0):
                 if(self.io.get("sclk") and captured == 0):
                     spi_data += (int(self.io.get("mosi")) << index)
-                    print(f'mosi={index}){self.io.get("mosi")}\n')
+                    #print(f'mosi={index}){self.io.get("mosi")}\n')
                     captured = 1
                     index -= 1
                 elif(self.io.get("sclk") == False):

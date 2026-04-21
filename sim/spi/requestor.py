@@ -48,10 +48,10 @@ class SpiMonitor(BaseMonitor):
 
 class SpiMisoDriver(BaseDriver):
     async def drive(self, transaction: SpiMisoTrans):
-        index = 0
+        index = 7
         spi_data = transaction.data
         sent = 0
-        while index <= 7:
+        while index >= 0:
             while (self.rst == 0):
                 await RisingEdge(self.clk)
 
@@ -63,7 +63,7 @@ class SpiMisoDriver(BaseDriver):
             if(self.io.get("sclk") and sent == 1):
                 #self.io.set("miso", ((spi_data>>index)%2))
                 #print(f'idx:{index}, misoexpected:{(spi_data>>index)%2}, misoreally:{self.io.get("miso")}')
-                index += 1
+                index -= 1
                 sent = 0
 
             await RisingEdge(self.clk)

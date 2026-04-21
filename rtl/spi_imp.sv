@@ -227,7 +227,7 @@ module spi_imp #(
   
   assign spi_ss_o = ~(ss_reg);
 
-  assign spi_mosi_o = (spi_state == eSPI_IDLE || spi_data_index == SPI_DATA_LENGTH || spi_state == eSPI_DONE) ? 1'b0 : tx_data_reg[SPI_DATA_LENGTH - 1 - {28'b0, spi_data_index}];
+  assign spi_mosi_o = (spi_state == eSPI_IDLE || spi_data_index == SPI_DATA_LENGTH || spi_state == eSPI_DONE || spi_state == eSPI_READING) ? 1'b0 : tx_data_reg[SPI_DATA_LENGTH - 1 - {28'b0, spi_data_index}];
   
   assign complete_o = ctrl_complete_bit;
 

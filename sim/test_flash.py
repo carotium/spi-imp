@@ -22,6 +22,8 @@ from flash_memory.transaction import FlashMemoryRequest, FlashMemoryResponse
 
 from flash_memory.model import FlashMemoryModel
 
+from flash_memory.sequences import flash_rsp_trans
+
 TX_DATA_REG_ADDR = 0
 RX_DATA_REG_ADDR = 4
 SPI_DIV_CLK_REG_ADDR = 8
@@ -64,24 +66,32 @@ async def flash_cmd(tb: FlashImpTB, log):
     ss = 0x1
     data = 0x9E
 
+    config = [
+        (SPI_DIV_CLK_REG_ADDR, spi_div),
+        (TX_DATA_REG_ADDR, data),
+        (SS_REG_ADDR, ss),
+        (CTRL_REG_ADDR, 0x1),
+    ]
+
+    for (address, data) in config:
+        obiWrite(tb=tb, addr=address, data=data)
+        await RisingEdge(tb.dut.obi_rvalid_o)
+
     # Set SPI clock divisor
-    obiWrite(tb, addr=SPI_DIV_CLK_REG_ADDR, data=spi_div)
-    await RisingEdge(tb.dut.obi_rvalid_o)
+    # obiWrite(tb, addr=SPI_DIV_CLK_REG_ADDR, data=spi_div)
+    # await RisingEdge(tb.dut.obi_rvalid_o)
 
     # Set transfer data
-    obiWrite(tb, addr=TX_DATA_REG_ADDR, data=data)
-    await RisingEdge(tb.dut.obi_rvalid_o)
+    # obiWrite(tb, addr=TX_DATA_REG_ADDR, data=data)
+    # await RisingEdge(tb.dut.obi_rvalid_o)
 
     # Set slaves
-    obiWrite(tb, addr=SS_REG_ADDR, data=ss)
-    await RisingEdge(tb.dut.obi_rvalid_o)
+    # obiWrite(tb, addr=SS_REG_ADDR, data=ss)
+    # await RisingEdge(tb.dut.obi_rvalid_o)
 
     # Start SPI write transaction
-    obiWrite(tb, addr=CTRL_REG_ADDR, data=0x1)
-    await RisingEdge(tb.dut.obi_rvalid_o)
-
-    
-    tb.flash_mem.read_id(tb, tb.flash_req_monitor, tb.flash_rsp_drv)
+    # obiWrite(tb, addr=CTRL_REG_ADDR, data=0x1)
+    # await RisingEdge(tb.dut.obi_rvalid_o)
 
     # Wait for SPI transaction to complete
     await RisingEdge(tb.dut.complete_o)
@@ -90,6 +100,30 @@ async def flash_cmd(tb: FlashImpTB, log):
 
     # Acknowledge SPI done, clear done bit
     obiWrite(tb=tb, addr=CTRL_REG_ADDR, data=0x0)
+
+    #tb.schedule(flash_rsp_trans(flash_rsp_drv=tb.flash_rsp_drv, trans=[FlashMemoryResponse(data=data)]), blocking=False)
+    tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=data))
+
+    # Start SPI read transaction
+    print(f'Starting SPI Read transaction!')
+    obiWrite(tb, addr=CTRL_REG_ADDR, data=0x2)
+    
+    await RisingEdge(tb.dut.obi_rvalid_o)
+
+    #await tb.flash_mem._response.wait_for(DriverEvent.PRE_DRIVE)
+    #await tb.flash_rsp_drv.wait_for(DriverEvent.POST_DRIVE)
+
+    await RisingEdge(tb.dut.complete_o)
+
+    tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=0x20))
+
+    await RisingEdge(tb.dut.clk_i)
+
+    print(f'Acknowledging SPI done')
+    # Acknowledge SPI done, clear done bit
+    obiWrite(tb=tb, addr=CTRL_REG_ADDR, data=0x0)
+
+    print(f'Unselecting slave')
     # Unselect slave
     obiWrite(tb=tb, addr=SS_REG_ADDR, data=0x0)
 

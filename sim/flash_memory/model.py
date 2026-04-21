@@ -31,10 +31,6 @@ class FlashMemoryModel:
     def write(self, address: int, data: int) -> None:
         self._memory[address] = data
 
-    def read_id(self, tb, req_mon: FlashMemoryRequestMonitor, rsp_drv: FlashMemoryResponseDriver) -> None:
-        tb.scoreboard.channels["flash_req_monitor"].push_reference(FlashMemoryRequest(cmd=READ_ID))
-
-
     def read(self, address: int) -> int:
         if address not in self._memory:
             self._memory[address] = self._random.getrandbits(8)
@@ -44,8 +40,9 @@ class FlashMemoryModel:
                  component: FlashMemoryRequestMonitor,
                  event: MonitorEvent,
                  transaction: FlashMemoryRequest) -> None:
+        print(f'In service!')
         assert component is self._request
         assert event is MonitorEvent.CAPTURE
+        print(f'cmd:{transaction.cmd}')
         if transaction.cmd == READ_ID:
-            self.data = 0x20BA1910
-            self._response.enqueue(FlashMemoryResponse())
+            self._response.enqueue(FlashMemoryResponse(data=0x20))

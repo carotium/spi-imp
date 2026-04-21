@@ -16,7 +16,7 @@ module shift_register
     .clk  (clk),
     .rstn (rstn),
     .ce   (ce),
-    .in   ({in, out[WORD_WIDTH-1:1]}),
+    .in   ({out[WORD_WIDTH-2:0], in}),
     .out  (out)
   );
 endmodule
