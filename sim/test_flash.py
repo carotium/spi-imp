@@ -53,9 +53,9 @@ class FlashImpTB(BaseBench):
         self.flash_mem.reset()
 
 @FlashImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=10000, shutdown_delay=1, shutdown_loops=1)
-@FlashImpTB.parameter("packet_length", int)
-@FlashImpTB.parameter("address_length", int)
-async def read_after_program(tb: FlashImpTB, log, packet_length: int = 7, address_length: int = 3):
+@FlashImpTB.parameter("packet_length", int, [2, 5, 7])
+@FlashImpTB.parameter("addr", int, [0, 2, 5])
+async def read_after_program(tb: FlashImpTB, log, packet_length: int, addr: int):
     log.info(f'Send PAGE_PROGRAM over SPI to Flash')
 
     # Schedule random ready driver
@@ -83,13 +83,13 @@ async def read_after_program(tb: FlashImpTB, log, packet_length: int = 7, addres
     # Reference for sent command to Flash
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=cmd))
 
-    for i in range(packet_length + address_length):
+    for i in range(packet_length + 3):
         # Write to transfer data our chosen address
-        if i < address_length:
-            obiWrite(tb, addr=TX_DATA_REG_ADDR, data=0x0)
+        if i < 3:
+            obiWrite(tb, addr=TX_DATA_REG_ADDR, data=(addr>>((8-i) * 8))%(255))
             await RisingEdge(tb.dut.obi_rvalid_o)
         else:
-            obiWrite(tb, addr=TX_DATA_REG_ADDR, data=flash_data[i-address_length])
+            obiWrite(tb, addr=TX_DATA_REG_ADDR, data=flash_data[i-3])
             await RisingEdge(tb.dut.obi_rvalid_o)
 
         # Start SPI read transaction
@@ -104,7 +104,7 @@ async def read_after_program(tb: FlashImpTB, log, packet_length: int = 7, addres
         if i < 3:
             tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
         else:
-            tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=flash_data[i-address_length]))
+            tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=flash_data[i-3]))
 
     # Unselect slave
     obiWrite(tb=tb, addr=SS_REG_ADDR, data=0x0)
@@ -132,13 +132,13 @@ async def read_after_program(tb: FlashImpTB, log, packet_length: int = 7, addres
     # Reference for sent command to Flash
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=cmd))
 
-    for i in range(packet_length + address_length):
+    for i in range(packet_length + 3):
         # Write to transfer data our chosen address
         obiWrite(tb, addr=TX_DATA_REG_ADDR, data=0x0)
         await RisingEdge(tb.dut.obi_rvalid_o)
 
         # Start SPI read transaction
-        if i < address_length:
+        if i < 3:
             obiWrite(tb, addr=CTRL_REG_ADDR, data=0x1)
             await RisingEdge(tb.dut.complete_o)
         else:
@@ -152,10 +152,10 @@ async def read_after_program(tb: FlashImpTB, log, packet_length: int = 7, addres
         # Read from RX data register
         obiRead(tb=tb, addr=RX_DATA_REG_ADDR)
         await RisingEdge(tb.dut.obi_rvalid_o)
-        if i < address_length:
+        if i < 3:
             tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
         else:
-            tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=flash_data[i-address_length]))
+            tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=flash_data[i-3]))
         # Reference for outgoing data on MOSI to be 0x0, because we are receiving on MISO
         tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
 
@@ -164,9 +164,9 @@ async def read_after_program(tb: FlashImpTB, log, packet_length: int = 7, addres
     await RisingEdge(tb.dut.obi_rvalid_o)
 
 @FlashImpTB.testcase(reset_wait_during=2, reset_wait_after=0, timeout=5000, shutdown_delay=1, shutdown_loops=1)
-@FlashImpTB.parameter("packet_length", int)
-@FlashImpTB.parameter("address_length", int)
-async def page_program(tb: FlashImpTB, log, packet_length: int = 7, address_length: int = 3):
+@FlashImpTB.parameter("packet_length", int, [4])
+@FlashImpTB.parameter("addr", int, [0, 2, 5])
+async def page_program(tb: FlashImpTB, log, packet_length: int, addr: int):
     log.info(f'Send PAGE_PROGRAM over SPI to Flash')
 
     # Schedule random ready driver
@@ -194,13 +194,13 @@ async def page_program(tb: FlashImpTB, log, packet_length: int = 7, address_leng
     # Reference for sent command to Flash
     tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=cmd))
 
-    for i in range(packet_length + address_length):
+    for i in range(packet_length + 3):
         # Write to transfer data our chosen address
-        if i < address_length:
-            obiWrite(tb, addr=TX_DATA_REG_ADDR, data=0x0)
+        if i < 3:
+            obiWrite(tb, addr=TX_DATA_REG_ADDR, data=(addr>>((8-i) * 8))%(255))
             await RisingEdge(tb.dut.obi_rvalid_o)
         else:
-            obiWrite(tb, addr=TX_DATA_REG_ADDR, data=flash_data[i-address_length])
+            obiWrite(tb, addr=TX_DATA_REG_ADDR, data=flash_data[i-3])
             await RisingEdge(tb.dut.obi_rvalid_o)
 
         # Start SPI read transaction
@@ -215,7 +215,7 @@ async def page_program(tb: FlashImpTB, log, packet_length: int = 7, address_leng
         if i < 3:
             tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
         else:
-            tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=flash_data[i-address_length]))
+            tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=flash_data[i-3]))
 
     # Unselect slave
     obiWrite(tb=tb, addr=SS_REG_ADDR, data=0x0)
