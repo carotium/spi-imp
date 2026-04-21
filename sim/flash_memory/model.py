@@ -76,6 +76,7 @@ class FlashMemoryModel:
             self._cmd = READ
             # Wait for three bytes of address data
             self._index = 2
+            self._address = 0
         elif self._index >= 0 and self._cmd == READ:
             print(f'Responding to READ, data={transaction.data}, idx: {self._index}')
             self._address += transaction.data << (8 * (self._index))
