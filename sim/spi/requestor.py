@@ -18,38 +18,18 @@ class SpiMonitor(BaseMonitor):
                 spi_command += (int(self.io.get("mosi")) << index)
                 assert self.io.get("ss") != 0xF, "ERROR: SS raised during transaction."
 
+            print(f'Captured SPI transaction')
             capture(SpiTrans(data=spi_command))
-
-# class SpiMisoDriver(BaseDriver):
-#     async def drive(self, transaction: SpiMisoTrans):
-#         index = 7
-#         spi_data = transaction.data
-#         sent = 0
-#         while index >= 0:
-#             while (self.rst == 0):
-#                 await RisingEdge(self.clk)
-
-#             while (self.io.get("sclk") == 0 and sent == 0):
-#                 sent = 1
-#                 self.io.set("miso", ((spi_data>>index)%2))
-#                 await RisingEdge(self.clk)
-
-#             if(self.io.get("sclk") and sent == 1):
-#                 #self.io.set("miso", ((spi_data>>index)%2))
-#                 #print(f'idx:{index}, misoexpected:{(spi_data>>index)%2}, misoreally:{self.io.get("miso")}')
-#                 index -= 1
-#                 sent = 0
-
-#             await RisingEdge(self.clk)
 
 class SpiMisoDriver(BaseDriver):
     async def drive(self, obj: SpiTrans) -> None:
-        bytes = obj.bytes
+        # bytes = obj.bytes
+        bytes = 1
         index = bytes*8 - 1
         spi_data = obj.data
         sent = 0
 
-        print(f'Sending {spi_data} on SPI')
+        #print(f'Sending {spi_data} on SPI')
 
         while index >= 0:
             while (self.rst == 0):
