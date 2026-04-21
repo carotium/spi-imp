@@ -85,8 +85,12 @@ async def read(tb: FlashImpTB, log):
         await RisingEdge(tb.dut.obi_rvalid_o)
 
         # Start SPI read transaction
-        obiWrite(tb, addr=CTRL_REG_ADDR, data=0x1)
-        await RisingEdge(tb.dut.complete_o)
+        if i < 3:
+            obiWrite(tb, addr=CTRL_REG_ADDR, data=0x1)
+            await RisingEdge(tb.dut.complete_o)
+        else:
+            obiWrite(tb, addr=CTRL_REG_ADDR, data=0x2)
+            await RisingEdge(tb.dut.complete_o)
 
         # Acknowledge SPI done, clear done bit
         obiWrite(tb=tb, addr=CTRL_REG_ADDR, data=0x0)
@@ -95,7 +99,10 @@ async def read(tb: FlashImpTB, log):
         # Read from RX data register
         obiRead(tb=tb, addr=RX_DATA_REG_ADDR)
         await RisingEdge(tb.dut.obi_rvalid_o)
-        tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+        if i < 3:
+            tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=0x0))
+        else:
+            tb.scoreboard.channels["obi_r_monitor"].push_reference(ObiChRTrans(rdata=i-2))
         # Reference for outgoing data on MOSI to be 0x0, because we are receiving on MISO
         tb.scoreboard.channels["spi_monitor"].push_reference(SpiTrans(data=0x0))
 
