@@ -8,7 +8,8 @@ from spi.transaction import SpiTrans
 
 # Commands
 READ_ID = 0x9E
-READ = 0x3
+READ = 0x03
+PAGE_PROGRAM = 0x02
 
 # Data output
 read_id_data = [
@@ -87,3 +88,21 @@ class FlashMemoryModel:
             print(f'got address: {self._address}')
             self._response.enqueue(SpiTrans(data=self._memory[self._address]))
             self._address += 1
+
+        if transaction.data == PAGE_PROGRAM:
+            print(f'Captured PAGE_PROGRAM')
+            self._cmd = PAGE_PROGRAM
+            # Wait for three bytes of address data
+            self._index = 2
+        elif self._index >= 0 and self._cmd == PAGE_PROGRAM:
+            print(f'Responding to PAGE_PROGRAM, address[{self._index}]={transaction.data}')
+            self._address += transaction.data << (8 * self._index)
+            if(self._index == 0):
+                print(f'address={self._address}')
+            self._index -= 1
+        elif self._index == -1 and self._cmd == PAGE_PROGRAM:
+            print(f'address: {self._address}, data: {transaction.data}')
+            self._memory[self._address] = transaction.data
+            self._address += 1
+
+        print(f'memory::{self._memory}')
