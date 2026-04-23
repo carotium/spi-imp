@@ -1,0 +1,10 @@
+package:
+  name: obi-spi
+  authors:
+    - "Ahac Rafael Bela <ahac.bela@gmail.com>"
+
+sources:
+  - rtl/lib/counter.sv
+  - rtl/lib/register.sv
+  - rtl/lib/shift_register.sv
+  - rtl/obi_spi.sv
