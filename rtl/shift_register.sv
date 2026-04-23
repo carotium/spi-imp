@@ -11,7 +11,7 @@ module shift_register
   output logic [WORD_WIDTH-1:0] out
 );
 
-  register #(.WORD_WIDTH(WORD_WIDTH), .RESET_VALUE(RESET_VALUE))
+  register #(.DTYPE(logic[WORD_WIDTH-1:0]), .RESET_VALUE(RESET_VALUE))
   shift_register_inst(
     .clk  (clk),
     .rstn (rstn),

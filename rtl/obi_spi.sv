@@ -194,7 +194,7 @@ module obi_spi #(
   );
 
   // SPI Data Counter
-  counter #(
+  cntr #(
     .WORD_WIDTH(4)
   ) spi_data_index_inst (
       .clk (clk_i),
@@ -204,7 +204,7 @@ module obi_spi #(
   );
 
   // SPI Serial Clock Counter
-  counter #(
+  cntr #(
     .WORD_WIDTH(DATA_WIDTH)
   ) spi_sclk_counter_inst (
       .clk (clk_i),
@@ -252,7 +252,7 @@ module obi_spi #(
   end
 
   // SPI FSM current state assignment
-  register #(.WORD_WIDTH(2), .RESET_VALUE(eSPI_IDLE)) spi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_state_next), .out(spi_state));
+  register #(.DTYPE(spi_state_t), .RESET_VALUE(eSPI_IDLE)) spi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_state_next), .out(spi_state));
 
   /**************************************************************
   **********                    OBI                    **********
@@ -271,7 +271,7 @@ module obi_spi #(
 
   // Transfer Data Register
   register #(
-    .WORD_WIDTH(SPI_DATA_LENGTH)
+    .DTYPE(logic[SPI_DATA_LENGTH-1:0])
   ) tx_data_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
@@ -282,7 +282,7 @@ module obi_spi #(
 
   // SPI Clock Divisor Register
   register #(
-    .WORD_WIDTH(DATA_WIDTH),
+    .DTYPE(logic[DATA_WIDTH-1:0]),
     .RESET_VALUE(SCLK_COUNTER_RESET_VALUE)
   ) spi_div_clk_reg_inst (
     .clk  (clk_i),
@@ -294,7 +294,7 @@ module obi_spi #(
 
   // Slave Select Register
   register #(
-    .WORD_WIDTH(NUM_SLAVES)
+    .DTYPE(logic[NUM_SLAVES-1:0])
   ) ss_reg_inst (
     .clk  (clk_i),
     .rstn (rstn_i),
@@ -304,7 +304,7 @@ module obi_spi #(
   );
 
   // OBI Response Data Out Register
-  register #(.WORD_WIDTH(DATA_WIDTH)) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (obi_a_read || ~obi_done)), .ce(obi_a_read), .in(obi_read_value), .out(obi_rdata_o));
+  register #(.DTYPE(logic[DATA_WIDTH-1:0])) obi_rdata_o_inst (.clk(clk_i), .rstn(rstn_i && (obi_a_read || ~obi_done)), .ce(obi_a_read), .in(obi_read_value), .out(obi_rdata_o));
 
   always_comb begin
     unique case (obi_aaddr_i)
@@ -339,7 +339,7 @@ module obi_spi #(
   end
 
   // OBI FSM current state assignment
-  register #(.WORD_WIDTH(2), .RESET_VALUE(eOBI_IDLE)) obi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(obi_state_next), .out(obi_state));
+  register #(.DTYPE(obi_state_t), .RESET_VALUE(eOBI_IDLE)) obi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(obi_state_next), .out(obi_state));
 
  /**************************************************************
  **********                   MISC                    **********
