@@ -1,7 +1,7 @@
 package:
   name: obi-spi
   authors:
-    - "Ahac Rafael Bela <ahac.bela@gmail.com>"
+    - "Ahac Rafael Bela"
 
 dependencies:
   std-lib: { git: "https://github.com/jurevreca12/std-lib.git",  rev: 1bc953c }
