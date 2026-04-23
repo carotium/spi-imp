@@ -286,8 +286,8 @@ def obi_transfer(tb, data):
     tb.schedule(obi_channel_a_trans(obi_a_drv=tb.obi_a_drv, trans=trans))
 
 def test_spi_runner():
-    runner = get_test_runner("spi_imp")
-    runner.test(hdl_toplevel="spi_imp", test_module="test_spi", waves=WAVES)
+    runner = get_test_runner("obi_spi")
+    runner.test(hdl_toplevel="obi_spi", test_module="test_spi", waves=WAVES)
 
 if __name__ == "__main__":
     test_spi_runner()

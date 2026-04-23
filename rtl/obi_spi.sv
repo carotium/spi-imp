@@ -1,4 +1,4 @@
-module spi_imp #(
+module obi_spi #(
   parameter int unsigned BASE_ADDR                = 0,
   parameter int unsigned ADDR_WIDTH               = 32,
   parameter int unsigned DATA_WIDTH               = 32,
