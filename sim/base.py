@@ -4,7 +4,7 @@ from pathlib import Path
 from cocotb_tools.runner import get_runner
 
 RTL_DIRS = (
-    "/foss/designs/spi-imp/rtl",
+    "/foss/designs/obi-spi/rtl",
 )
 LANGUAGE = os.getenv("HDL_TOPLEVEL_LANG", "verilog").lower().strip()
 WAVES = os.getenv("WAVES", default=False)

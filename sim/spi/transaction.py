@@ -4,4 +4,5 @@ from forastero import BaseTransaction
 
 @dataclass(kw_only=True)
 class SpiTrans(BaseTransaction):
+    #bytes: int = 1
     data: int = 0

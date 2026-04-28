@@ -35,7 +35,7 @@ async def obi_channel_r_trans(
             await obi_r_drv.enqueue(
                 ObiChRBackpressureTrans(
                     ready = ctx.random.choice((True, False)),
-                    cycles = ctx.random.randint(1, 3),
+                    cycles = ctx.random.randint(1, 10),
                 ),
                 wait_for=DriverEvent.PRE_DRIVE
             ).wait()
