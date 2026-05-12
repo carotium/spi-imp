@@ -139,6 +139,7 @@ module obi_spi #(
 
   logic spi_sclk_prev;
   logic spi_sclk_counter_en;
+  logic spi_sclk_ce;
 
   logic spi_started_writing, spi_stopped_writing, spi_started_reading, spi_stopped_reading, spi_completed;
 
@@ -214,9 +215,12 @@ module obi_spi #(
   );
 
   // Previous SPI serial clock
-  register spi_sclk_prev_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_sclk_o), .out(spi_sclk_prev));
+  register spi_sclk_prev_inst (.clk(clk_i), .rstn(rstn_i), .ce('1), .in(spi_sclk_o), .out(spi_sclk_prev));
   // SPI Serial Clock
-  register spi_sclk_o_inst (.clk(clk_i), .rstn(rstn_i && spi_ss_o < '1), .ce(spi_sclk_counter == spi_div_clk_reg), .in(~spi_sclk_o), .out(spi_sclk_o));
+
+  assign spi_sclk_ce = (spi_sclk_counter == spi_div_clk_reg) && (spi_div_clk_reg != '0);
+
+  register spi_sclk_o_inst (.clk(clk_i), .rstn(rstn_i && spi_ss_o < '1), .ce(spi_sclk_ce), .in(~spi_sclk_o), .out(spi_sclk_o));
 
   /**************************************************************
   **********                  SPI FSM                  **********
@@ -245,14 +249,14 @@ module obi_spi #(
 
   // SPI FSM transitions
   always_comb begin
-    spi_state_next = spi_started_writing                          ? eSPI_WRITING : spi_state;
-    spi_state_next = spi_started_reading                          ? eSPI_READING : spi_state_next;
-    spi_state_next = (spi_stopped_writing || spi_stopped_reading) ? eSPI_DONE :    spi_state_next;
-    spi_state_next = spi_completed                                ? eSPI_IDLE :    spi_state_next;
+    spi_state_next = spi_started_writing && (spi_div_clk_reg != '0) ? eSPI_WRITING : spi_state;
+    spi_state_next = spi_started_reading && (spi_div_clk_reg != '0) ? eSPI_READING : spi_state_next;
+    spi_state_next = (spi_stopped_writing || spi_stopped_reading)   ? eSPI_DONE :    spi_state_next;
+    spi_state_next = spi_completed                                  ? eSPI_IDLE :    spi_state_next;
   end
 
   // SPI FSM current state assignment
-  register #(.DTYPE(spi_state_t), .RESET_VALUE(eSPI_IDLE)) spi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(spi_state_next), .out(spi_state));
+  register #(.DTYPE(spi_state_t), .RESET_VALUE(eSPI_IDLE)) spi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce('1), .in(spi_state_next), .out(spi_state));
 
   /**************************************************************
   **********                    OBI                    **********
@@ -313,6 +317,7 @@ module obi_spi #(
       SpiDivClkRegAddrOffset: obi_read_value = spi_div_clk_reg;
       SsRegAddrOffset: obi_read_value = {28'b0, ss_reg};
       CtrlRegAddrOffset: obi_read_value = {26'b0, ctrl_reg_value};
+      default:		 obi_read_value = 32'b0; 
     endcase
   end
 
@@ -339,7 +344,7 @@ module obi_spi #(
   end
 
   // OBI FSM current state assignment
-  register #(.DTYPE(obi_state_t), .RESET_VALUE(eOBI_IDLE)) obi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce(clk_i), .in(obi_state_next), .out(obi_state));
+  register #(.DTYPE(obi_state_t), .RESET_VALUE(eOBI_IDLE)) obi_state_inst (.clk(clk_i), .rstn(rstn_i), .ce('1), .in(obi_state_next), .out(obi_state));
 
  /**************************************************************
  **********                   MISC                    **********
